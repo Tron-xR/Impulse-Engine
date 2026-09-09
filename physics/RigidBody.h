@@ -5,6 +5,7 @@
 
 enum class ShapeType {
     Circle,
+    Plane,
 };
 
 class Shape {
@@ -19,6 +20,21 @@ public:
 
     explicit CircleShape(float radius) : radius(radius) {}
     ShapeType getType() const override { return ShapeType::Circle; }
+};
+
+class PlaneShape : public Shape {
+public:
+    Vec2 normal;
+    float offset;
+    float restitution;
+
+    PlaneShape(const Vec2& normal, float offset, float restitution = 0.3f)
+        : normal(normal.normalized())
+        , offset(offset)
+        , restitution(restitution)
+    {}
+
+    ShapeType getType() const override { return ShapeType::Plane; }
 };
 
 class RigidBody {

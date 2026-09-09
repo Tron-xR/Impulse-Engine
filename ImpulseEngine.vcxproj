@@ -176,7 +176,9 @@
   <ItemGroup>
     <ClInclude Include="glad\include\glad\glad.h" />
   </ItemGroup>
-  <ItemGroup>
+<ItemGroup>
+    <ClInclude Include="collision\CollisionDetect.h" />
+    <ClInclude Include="glad\include\glad\glad.h" />
     <ClInclude Include="physics\Vec2.h" />
     <ClInclude Include="physics\RigidBody.h" />
     <ClInclude Include="physics\World.h" />

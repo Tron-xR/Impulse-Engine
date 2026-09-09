@@ -1,6 +1,7 @@
 #pragma once
 
 #include "RigidBody.h"
+#include "../collision/CollisionDetect.h"
 #include <vector>
 #include <memory>
 
@@ -23,16 +24,37 @@ public:
     void step() {
         for (auto& body : bodies) {
             if (body->invMass == 0.0f) continue;
-
             body->applyForce(gravity * body->mass);
         }
 
         for (auto& body : bodies) {
             if (body->invMass == 0.0f) continue;
-
             body->velocity += body->force * body->invMass * fixedDt;
-            body->position += body->velocity * fixedDt;
             body->clearForces();
+        }
+
+        resolveCollisions();
+
+        for (auto& body : bodies) {
+            if (body->invMass == 0.0f) continue;
+            body->position += body->velocity * fixedDt;
+        }
+    }
+
+private:
+    void resolveCollisions() {
+        for (auto& body : bodies) {
+            if (body->invMass == 0.0f || body->shape->getType() != ShapeType::Circle) continue;
+
+            for (auto& other : bodies) {
+                if (other.get() == body.get() || other->shape->getType() != ShapeType::Plane) continue;
+
+                Manifold manifold;
+                const PlaneShape& plane = static_cast<const PlaneShape&>(*other->shape);
+                if (detectCircleVsPlane(*body, plane, manifold)) {
+                    applyImpulse(*body, manifold);
+                }
+            }
         }
     }
 };

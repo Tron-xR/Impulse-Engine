@@ -6,6 +6,7 @@
 #include "physics/Vec2.h"
 #include "physics/RigidBody.h"
 #include "physics/World.h"
+#include "collision/CollisionDetect.h"
 
 constexpr float TOLERANCE = 1e-3f;
 
@@ -147,6 +148,98 @@ void testStaticBodyDoesNotMove() {
     std::cout << "  PASS: Static body (zero mass) does not move\n";
 }
 
+void testPlaneCollisionDetection() {
+    PlaneShape floor(Vec2(0.0f, 1.0f), -220.0f);
+    Manifold m;
+
+    RigidBody touching(Vec2(0.0f, -190.0f), 1.0f, std::make_unique<CircleShape>(30.0f));
+    CHECK(!detectCircleVsPlane(touching, floor, m));
+
+    RigidBody overlapping(Vec2(0.0f, -200.0f), 1.0f, std::make_unique<CircleShape>(30.0f));
+    CHECK(detectCircleVsPlane(overlapping, floor, m));
+    CHECK(m.normal == Vec2(0.0f, 1.0f));
+    CHECK(approxEqual(m.penetration, 10.0f));
+    CHECK(approxEqual(m.contactPoint, Vec2(0.0f, -220.0f)));
+    CHECK(approxEqual(m.restitution, 0.3f));
+
+    std::cout << "  PASS: Circle-vs-plane detection (normal/penetration/contact)\n";
+}
+
+void testCirclePlaneImpulseKnownAnswer() {
+    PlaneShape floor(Vec2(0.0f, 1.0f), -220.0f);
+    Manifold m;
+
+    RigidBody body(Vec2(0.0f, -200.0f), 2.0f, std::make_unique<CircleShape>(30.0f), 0.5f);
+    body.velocity = Vec2(0.0f, -10.0f);
+
+    CHECK(detectCircleVsPlane(body, floor, m));
+    CHECK(approxEqual(m.restitution, 0.5f));
+    applyImpulse(body, m);
+    CHECK(approxEqual(body.velocity.y, 5.0f));
+    CHECK(approxEqual(body.velocity.x, 0.0f));
+
+    RigidBody heavy(Vec2(0.0f, -200.0f), 10.0f, std::make_unique<CircleShape>(30.0f), 0.5f);
+    heavy.velocity = Vec2(0.0f, -10.0f);
+    CHECK(detectCircleVsPlane(heavy, floor, m));
+    applyImpulse(heavy, m);
+    CHECK(approxEqual(heavy.velocity.y, 5.0f));
+
+    std::cout << "  PASS: Circle-vs-plane known-answer impulse (v_out = e * v_in, mass-independent)\n";
+}
+
+void testDropBouncesAndDoesNotSink() {
+    World world(Vec2(0.0f, -980.0f), 1.0f / 120.0f);
+    constexpr float FLOOR_Y = -220.0f;
+    constexpr float RADIUS = 30.0f;
+    world.addBody(Vec2(0.0f, FLOOR_Y - 10.0f), 0.0f,
+                  std::make_unique<PlaneShape>(Vec2(0.0f, 1.0f), FLOOR_Y));
+
+    RigidBody* c = world.addBody(Vec2(0.0f, 180.0f), 2.0f,
+                                 std::make_unique<CircleShape>(RADIUS), 0.6f);
+
+    const float restY = FLOOR_Y + RADIUS;
+    bool bounced = false;
+
+    for (int i = 0; i < 2400; ++i) {
+        world.step();
+        CHECK(std::isfinite(c->position.x));
+        CHECK(std::isfinite(c->position.y));
+        CHECK(std::isfinite(c->velocity.x));
+        CHECK(std::isfinite(c->velocity.y));
+        if (c->velocity.y > 100.0f) bounced = true;
+        CHECK(c->position.y > restY - 12.0f);
+    }
+
+    CHECK(bounced);
+    CHECK(std::fabs(c->position.y - restY) < 10.0f);
+    CHECK(std::fabs(c->velocity.y) < 10.0f);
+
+    std::cout << "  PASS: Dropped circle bounces and settles at rest height (no sink)\n";
+    std::cout << "    final pos.y=" << c->position.y << " vel.y=" << c->velocity.y << "\n";
+}
+
+void testRestingNoBounce() {
+    World world(Vec2(0.0f, -980.0f), 1.0f / 120.0f);
+    constexpr float FLOOR_Y = -220.0f;
+    constexpr float RADIUS = 20.0f;
+    world.addBody(Vec2(0.0f, FLOOR_Y - 10.0f), 0.0f,
+                  std::make_unique<PlaneShape>(Vec2(0.0f, 1.0f), FLOOR_Y, 0.0f));
+
+    RigidBody* c = world.addBody(Vec2(0.0f, 0.0f), 1.0f,
+                                 std::make_unique<CircleShape>(RADIUS), 0.0f);
+
+    for (int i = 0; i < 2400; ++i) {
+        world.step();
+    }
+
+    const float restY = FLOOR_Y + RADIUS;
+    CHECK(std::fabs(c->position.y - restY) < 8.0f);
+    CHECK(std::fabs(c->velocity.y) < 1.0f);
+
+    std::cout << "  PASS: Restitution 0 rests on floor (no bounce)\n";
+    std::cout << "    final pos.y=" << c->position.y << " vel.y=" << c->velocity.y << "\n";
+}
+
 int main() {
     std::cout << "ImpulseEngine Unit Tests\n";
     std::cout << "========================\n";
@@ -156,6 +249,10 @@ int main() {
     testSemiImplicitEulerShortDuration();
     testStepCountTruncationRegression();
     testStaticBodyDoesNotMove();
+    testPlaneCollisionDetection();
+    testCirclePlaneImpulseKnownAnswer();
+    testDropBouncesAndDoesNotSink();
+    testRestingNoBounce();
 
     std::cout << "========================\n";
     std::cout << "All tests passed.\n";

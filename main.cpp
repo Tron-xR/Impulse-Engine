@@ -101,21 +101,11 @@ private:
     unsigned int program = 0;
 };
 
-class CircleMesh {
+class Mesh {
 public:
-    CircleMesh(int segments) {
+    Mesh(const std::vector<float>& verts, GLenum mode) : mode(mode) {
         glGenVertexArrays(1, &vao);
         glGenBuffers(1, &vbo);
-
-        std::vector<float> verts;
-        verts.reserve(static_cast<size_t>(segments + 1) * 2);
-        verts.push_back(0.0f);
-        verts.push_back(0.0f);
-        for (int i = 0; i <= segments; ++i) {
-            float angle = 2.0f * PI * static_cast<float>(i) / static_cast<float>(segments);
-            verts.push_back(std::cos(angle));
-            verts.push_back(std::sin(angle));
-        }
 
         glBindVertexArray(vao);
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
@@ -126,27 +116,51 @@ public:
         glEnableVertexAttribArray(0);
         glBindVertexArray(0);
 
-        vertexCount = static_cast<GLsizei>(segments) + 2;
+        vertexCount = static_cast<GLsizei>(verts.size() / 2);
     }
 
-    ~CircleMesh() {
+    ~Mesh() {
         glDeleteBuffers(1, &vbo);
         glDeleteVertexArrays(1, &vao);
     }
 
-    CircleMesh(const CircleMesh&) = delete;
-    CircleMesh& operator=(const CircleMesh&) = delete;
+    Mesh(const Mesh&) = delete;
+    Mesh& operator=(const Mesh&) = delete;
 
-    void draw(const Vec2& center, float radius) const {
+    void draw() const {
         glBindVertexArray(vao);
-        glDrawArrays(GL_TRIANGLE_FAN, 0, vertexCount);
+        glDrawArrays(mode, 0, vertexCount);
     }
 
 private:
     unsigned int vao = 0;
     unsigned int vbo = 0;
     GLsizei vertexCount = 0;
+    GLenum mode;
 };
+
+Mesh createCircleMesh(int segments) {
+    std::vector<float> verts;
+    verts.reserve(static_cast<size_t>(segments + 1) * 2);
+    verts.push_back(0.0f);
+    verts.push_back(0.0f);
+    for (int i = 0; i <= segments; ++i) {
+        float angle = 2.0f * PI * static_cast<float>(i) / static_cast<float>(segments);
+        verts.push_back(std::cos(angle));
+        verts.push_back(std::sin(angle));
+    }
+    return Mesh(verts, GL_TRIANGLE_FAN);
+}
+
+Mesh createRectMesh() {
+    std::vector<float> verts = {
+        -0.5f, -0.5f,
+         0.5f, -0.5f,
+        -0.5f,  0.5f,
+         0.5f,  0.5f
+    };
+    return Mesh(verts, GL_TRIANGLE_STRIP);
+}
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 
@@ -174,10 +188,10 @@ int main(int argc, char* argv[]) {
     const char* vertexShaderSource = R"(
     #version 330 core
     layout (location = 0) in vec2 aPos;
-    uniform vec4 uCircle;   // x, y, radius, scale
+    uniform vec4 uTransform;    // x, y, scaleX, scaleY
     uniform vec2 uHalfScreen;
     void main() {
-        vec2 worldPos = aPos * uCircle.z + uCircle.xy;
+        vec2 worldPos = aPos * uTransform.zw + uTransform.xy;
         vec2 clipPos = vec2(worldPos.x / uHalfScreen.x, -worldPos.y / uHalfScreen.y);
         gl_Position = vec4(clipPos, 0.0, 1.0);
     }
@@ -195,14 +209,25 @@ int main(int argc, char* argv[]) {
     ShaderProgram shader(vertexShaderSource, fragmentShaderSource);
     if (shader.get() == 0) return -1;
 
-    CircleMesh circle(24);
-    GLint circleLoc = glGetUniformLocation(shader.get(), "uCircle");
+    Mesh circleMesh = createCircleMesh(24);
+    Mesh rectMesh = createRectMesh();
+    GLint transformLoc = glGetUniformLocation(shader.get(), "uTransform");
     GLint halfScreenLoc = glGetUniformLocation(shader.get(), "uHalfScreen");
     GLint colorLoc = glGetUniformLocation(shader.get(), "uColor");
 
     World world(Vec2(0.0f, -980.0f), PHYSICS_DT);
-    RigidBody* circleBody = world.addBody(Vec2(0.0f, 150.0f), 5.0f,
-                                          std::make_unique<CircleShape>(30.0f), 0.3f);
+
+    constexpr float FLOOR_Y = -220.0f;
+    auto floorPlane = std::make_unique<PlaneShape>(Vec2(0.0f, 1.0f), FLOOR_Y, 0.0f);
+    world.addBody(Vec2(0.0f, FLOOR_Y - 10.0f), 0.0f, std::move(floorPlane));
+
+    RigidBody* bouncy = world.addBody(Vec2(130.0f, 180.0f), 5.0f,
+                                      std::make_unique<CircleShape>(30.0f), 0.85f);
+    RigidBody* damped = world.addBody(Vec2(-130.0f, 120.0f), 3.0f,
+                                      std::make_unique<CircleShape>(24.0f), 0.15f);
+
+    const CircleShape* bouncyShape = static_cast<const CircleShape*>(bouncy->shape.get());
+    const CircleShape* dampedShape = static_cast<const CircleShape*>(damped->shape.get());
 
     glClearColor(0.15f, 0.15f, 0.2f, 1.0f);
 
@@ -240,10 +265,19 @@ int main(int argc, char* argv[]) {
         shader.use();
         glUniform2f(halfScreenLoc, SCR_WIDTH / 2.0f, SCR_HEIGHT / 2.0f);
 
-        const CircleShape* cs = static_cast<const CircleShape*>(circleBody->shape.get());
-        glUniform4f(circleLoc, circleBody->position.x, circleBody->position.y, cs->radius, 1.0f);
+        glUniform4f(transformLoc, 0.0f, FLOOR_Y - 10.0f, 1600.0f, 20.0f);
+        glUniform4f(colorLoc, 0.32f, 0.34f, 0.42f, 1.0f);
+        rectMesh.draw();
+
+        glUniform4f(transformLoc, bouncy->position.x, bouncy->position.y,
+                    bouncyShape->radius, bouncyShape->radius);
         glUniform4f(colorLoc, 0.35f, 0.7f, 0.95f, 1.0f);
-        circle.draw(circleBody->position, cs->radius);
+        circleMesh.draw();
+
+        glUniform4f(transformLoc, damped->position.x, damped->position.y,
+                    dampedShape->radius, dampedShape->radius);
+        glUniform4f(colorLoc, 0.85f, 0.55f, 0.35f, 1.0f);
+        circleMesh.draw();
 
         glfwSwapBuffers(app.get());
         glfwPollEvents();
