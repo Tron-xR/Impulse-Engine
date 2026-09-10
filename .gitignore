@@ -363,4 +363,10 @@ MigrationBackup/
 FodyWeavers.xsd
 
 # Local-only planning/design documents (kept in working tree, never pushed)
-*.md
+00_README.md
+01_SCOPE_AND_REQUIREMENTS.md
+02_ARCHITECTURE.md
+03_USER_FLOW.md
+04_TESTING_AND_PROFILING.md
+05_AGENT_WORKFLOW.md
+06_ROADMAP.md
