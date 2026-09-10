@@ -167,6 +167,7 @@ void testPlaneCollisionDetection() {
 
 void testCirclePlaneImpulseKnownAnswer() {
     PlaneShape floor(Vec2(0.0f, 1.0f), -220.0f);
+    RigidBody staticPlane(Vec2(0.0f, -230.0f), 0.0f, std::make_unique<PlaneShape>(floor));
     Manifold m;
 
     RigidBody body(Vec2(0.0f, -200.0f), 2.0f, std::make_unique<CircleShape>(30.0f), 0.5f);
@@ -174,14 +175,14 @@ void testCirclePlaneImpulseKnownAnswer() {
 
     CHECK(detectCircleVsPlane(body, floor, m));
     CHECK(approxEqual(m.restitution, 0.5f));
-    applyImpulse(body, m);
+    applyImpulse(body, staticPlane, m);
     CHECK(approxEqual(body.velocity.y, 5.0f));
     CHECK(approxEqual(body.velocity.x, 0.0f));
 
     RigidBody heavy(Vec2(0.0f, -200.0f), 10.0f, std::make_unique<CircleShape>(30.0f), 0.5f);
     heavy.velocity = Vec2(0.0f, -10.0f);
     CHECK(detectCircleVsPlane(heavy, floor, m));
-    applyImpulse(heavy, m);
+    applyImpulse(heavy, staticPlane, m);
     CHECK(approxEqual(heavy.velocity.y, 5.0f));
 
     std::cout << "  PASS: Circle-vs-plane known-answer impulse (v_out = e * v_in, mass-independent)\n";
@@ -216,6 +217,110 @@ void testDropBouncesAndDoesNotSink() {
 
     std::cout << "  PASS: Dropped circle bounces and settles at rest height (no sink)\n";
     std::cout << "    final pos.y=" << c->position.y << " vel.y=" << c->velocity.y << "\n";
+}
+
+void testCircleCircleDetection() {
+    RigidBody a(Vec2(0.0f, 0.0f), 1.0f, std::make_unique<CircleShape>(10.0f));
+    RigidBody b(Vec2(15.0f, 0.0f), 1.0f, std::make_unique<CircleShape>(10.0f));
+    Manifold m;
+
+    CHECK(detectCircleCircle(a, b, m));
+    CHECK(approxEqual(m.normal, Vec2(-1.0f, 0.0f)));
+    CHECK(approxEqual(m.penetration, 5.0f));
+    CHECK(approxEqual(m.restitution, 0.3f));
+
+    RigidBody c(Vec2(0.0f, 0.0f), 1.0f, std::make_unique<CircleShape>(10.0f));
+    RigidBody d(Vec2(25.0f, 0.0f), 1.0f, std::make_unique<CircleShape>(10.0f));
+    CHECK(!detectCircleCircle(c, d, m));
+
+    std::cout << "  PASS: Circle-circle detection (normal/penetration, separated case)\n";
+}
+
+void testEqualMassElasticVelocitySwap() {
+    World world(Vec2(0.0f, 0.0f), 1.0f / 120.0f);
+    RigidBody* a = world.addBody(Vec2(-12.0f, 0.0f), 1.0f, std::make_unique<CircleShape>(10.0f), 1.0f);
+    RigidBody* b = world.addBody(Vec2(12.0f, 0.0f), 1.0f, std::make_unique<CircleShape>(10.0f), 1.0f);
+    a->velocity = Vec2(10.0f, 0.0f);
+    b->velocity = Vec2(-10.0f, 0.0f);
+
+    for (int i = 0; i < 60; ++i) {
+        world.step();
+    }
+
+    CHECK(approxEqual(a->velocity.x, -10.0f, 0.01f));
+    CHECK(approxEqual(b->velocity.x, 10.0f, 0.01f));
+    CHECK(approxEqual(a->velocity.y, 0.0f, 0.01f));
+    CHECK(approxEqual(b->velocity.y, 0.0f, 0.01f));
+    CHECK(approxEqual(a->velocity.x + b->velocity.x, 0.0f, 0.02f));
+
+    std::cout << "  PASS: Equal-mass elastic collision swaps velocities (done criterion)\n";
+    std::cout << "    vA=(" << a->velocity.x << ", " << a->velocity.y
+              << ") vB=(" << b->velocity.x << ", " << b->velocity.y << ")\n";
+}
+
+void testMomentumConservedUnequalMass() {
+    World world(Vec2(0.0f, 0.0f), 1.0f / 120.0f);
+    RigidBody* a = world.addBody(Vec2(-12.0f, 0.0f), 1.0f, std::make_unique<CircleShape>(10.0f), 1.0f);
+    RigidBody* b = world.addBody(Vec2(12.0f, 0.0f), 3.0f, std::make_unique<CircleShape>(10.0f), 1.0f);
+    a->velocity = Vec2(10.0f, 0.0f);
+    b->velocity = Vec2(-10.0f, 0.0f);
+
+    float momentumBefore = a->velocity.x + 3.0f * b->velocity.x;
+
+    for (int i = 0; i < 60; ++i) {
+        world.step();
+    }
+
+    float momentumAfter = a->velocity.x + 3.0f * b->velocity.x;
+    CHECK(approxEqual(momentumAfter, momentumBefore, 0.02f));
+    CHECK(approxEqual(a->velocity.x, -20.0f, 0.02f));
+    CHECK(approxEqual(b->velocity.x, 0.0f, 0.02f));
+
+    std::cout << "  PASS: Unequal-mass elastic collision (momentum conserved, vA'=-20, vB'=0)\n";
+}
+
+void testNonElasticCollisionLosesRelativeSpeed() {
+    RigidBody a(Vec2(0.0f, 0.0f), 1.0f, std::make_unique<CircleShape>(5.0f), 0.5f);
+    RigidBody b(Vec2(9.0f, 0.0f), 1.0f, std::make_unique<CircleShape>(5.0f), 0.5f);
+    a.velocity = Vec2(10.0f, 0.0f);
+    b.velocity = Vec2(-10.0f, 0.0f);
+
+    Manifold m;
+    CHECK(detectCircleCircle(a, b, m));
+    CHECK(approxEqual(m.restitution, 0.5f));
+    applyImpulse(a, b, m);
+
+    Vec2 rvBefore = Vec2(10.0f, 0.0f) - Vec2(-10.0f, 0.0f);
+    Vec2 rvAfter = a.velocity - b.velocity;
+    CHECK(approxEqual(a.velocity.x, -5.0f, 1e-4f));
+    CHECK(approxEqual(b.velocity.x, 5.0f, 1e-4f));
+    CHECK(approxEqual(rvAfter.length(), 0.5f * rvBefore.length(), 1e-4f));
+
+    std::cout << "  PASS: e=0.5 collision halves relative speed (10 -> 5)\n";
+}
+
+void testIdenticalPositionCirclesNoNaN() {
+    World world(Vec2(0.0f, 0.0f), 1.0f / 120.0f);
+    RigidBody* a = world.addBody(Vec2(0.0f, 0.0f), 1.0f, std::make_unique<CircleShape>(5.0f), 0.8f);
+    RigidBody* b = world.addBody(Vec2(0.0f, 0.0f), 1.0f, std::make_unique<CircleShape>(5.0f), 0.8f);
+    a->velocity = Vec2(5.0f, 0.0f);
+    b->velocity = Vec2(-5.0f, 0.0f);
+
+    Manifold m;
+    CHECK(detectCircleCircle(*a, *b, m));
+    CHECK(std::isfinite(m.normal.x) && std::isfinite(m.normal.y));
+
+    for (int i = 0; i < 30; ++i) {
+        world.step();
+    }
+
+    CHECK(std::isfinite(a->position.x) && std::isfinite(a->position.y));
+    CHECK(std::isfinite(b->position.x) && std::isfinite(b->position.y));
+    CHECK(std::isfinite(a->velocity.x) && std::isfinite(a->velocity.y));
+    CHECK(std::isfinite(b->velocity.x) && std::isfinite(b->velocity.y));
+    CHECK(approxEqual(a->velocity.x + b->velocity.x, 0.0f, 0.01f));
+
+    std::cout << "  PASS: Identically-positioned circles (epsilon guard, no NaN)\n";
 }
 
 void testRestingNoBounce() {
@@ -253,6 +358,11 @@ int main() {
     testCirclePlaneImpulseKnownAnswer();
     testDropBouncesAndDoesNotSink();
     testRestingNoBounce();
+    testCircleCircleDetection();
+    testEqualMassElasticVelocitySwap();
+    testMomentumConservedUnequalMass();
+    testNonElasticCollisionLosesRelativeSpeed();
+    testIdenticalPositionCirclesNoNaN();
 
     std::cout << "========================\n";
     std::cout << "All tests passed.\n";

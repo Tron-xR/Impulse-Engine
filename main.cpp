@@ -221,13 +221,20 @@ int main(int argc, char* argv[]) {
     auto floorPlane = std::make_unique<PlaneShape>(Vec2(0.0f, 1.0f), FLOOR_Y, 0.0f);
     world.addBody(Vec2(0.0f, FLOOR_Y - 10.0f), 0.0f, std::move(floorPlane));
 
-    RigidBody* bouncy = world.addBody(Vec2(130.0f, 180.0f), 5.0f,
-                                      std::make_unique<CircleShape>(30.0f), 0.85f);
-    RigidBody* damped = world.addBody(Vec2(-130.0f, 120.0f), 3.0f,
-                                      std::make_unique<CircleShape>(24.0f), 0.15f);
+    struct Spawn { Vec2 pos; float mass; float radius; Vec2 vel; float restitution; };
+    const Spawn spawns[] = {
+        { { -260.0f, 120.0f }, 5.0f, 30.0f, {  40.0f,   0.0f }, 0.85f },
+        { { -100.0f, 200.0f }, 2.0f, 22.0f, {   0.0f,   0.0f }, 0.40f },
+        { {   40.0f, 300.0f }, 3.0f, 18.0f, { -30.0f,   0.0f }, 0.70f },
+        { {  180.0f, 150.0f }, 4.0f, 26.0f, {  20.0f,   0.0f }, 0.90f },
+        { {  320.0f, -80.0f }, 2.0f, 20.0f, { -60.0f,   0.0f }, 0.50f },
+    };
 
-    const CircleShape* bouncyShape = static_cast<const CircleShape*>(bouncy->shape.get());
-    const CircleShape* dampedShape = static_cast<const CircleShape*>(damped->shape.get());
+    for (const Spawn& s : spawns) {
+        RigidBody* body = world.addBody(s.pos, s.mass,
+                                        std::make_unique<CircleShape>(s.radius), s.restitution);
+        body->velocity = s.vel;
+    }
 
     glClearColor(0.15f, 0.15f, 0.2f, 1.0f);
 
@@ -269,15 +276,26 @@ int main(int argc, char* argv[]) {
         glUniform4f(colorLoc, 0.32f, 0.34f, 0.42f, 1.0f);
         rectMesh.draw();
 
-        glUniform4f(transformLoc, bouncy->position.x, bouncy->position.y,
-                    bouncyShape->radius, bouncyShape->radius);
-        glUniform4f(colorLoc, 0.35f, 0.7f, 0.95f, 1.0f);
-        circleMesh.draw();
+        struct Rgb { float r, g, b; };
+        const Rgb palette[] = {
+            { 0.35f, 0.70f, 0.95f },
+            { 0.85f, 0.55f, 0.35f },
+            { 0.55f, 0.85f, 0.45f },
+            { 0.90f, 0.80f, 0.30f },
+            { 0.75f, 0.45f, 0.90f },
+        };
 
-        glUniform4f(transformLoc, damped->position.x, damped->position.y,
-                    dampedShape->radius, dampedShape->radius);
-        glUniform4f(colorLoc, 0.85f, 0.55f, 0.35f, 1.0f);
-        circleMesh.draw();
+        int spawned = 0;
+        for (auto& body : world.bodies) {
+            if (body->shape->getType() != ShapeType::Circle) continue;
+
+            const CircleShape& cs = static_cast<const CircleShape&>(*body->shape);
+            const Rgb& c = palette[spawned % 5];
+            glUniform4f(transformLoc, body->position.x, body->position.y, cs.radius, cs.radius);
+            glUniform4f(colorLoc, c.r, c.g, c.b, 1.0f);
+            circleMesh.draw();
+            ++spawned;
+        }
 
         glfwSwapBuffers(app.get());
         glfwPollEvents();

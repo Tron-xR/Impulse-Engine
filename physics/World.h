@@ -43,16 +43,34 @@ public:
 
 private:
     void resolveCollisions() {
-        for (auto& body : bodies) {
-            if (body->invMass == 0.0f || body->shape->getType() != ShapeType::Circle) continue;
+        for (size_t i = 0; i < bodies.size(); ++i) {
+            for (size_t j = i + 1; j < bodies.size(); ++j) {
+                RigidBody* circle = nullptr;
+                RigidBody* plane = nullptr;
+                if (bodies[i]->shape->getType() == ShapeType::Circle && bodies[j]->shape->getType() == ShapeType::Plane) {
+                    circle = bodies[i].get();
+                    plane = bodies[j].get();
+                } else if (bodies[i]->shape->getType() == ShapeType::Plane && bodies[j]->shape->getType() == ShapeType::Circle) {
+                    circle = bodies[j].get();
+                    plane = bodies[i].get();
+                }
 
-            for (auto& other : bodies) {
-                if (other.get() == body.get() || other->shape->getType() != ShapeType::Plane) continue;
+                if (circle && plane) {
+                    if (circle->invMass == 0.0f) continue;
+                    Manifold manifold;
+                    const PlaneShape& planeShape = static_cast<const PlaneShape&>(*plane->shape);
+                    if (detectCircleVsPlane(*circle, planeShape, manifold)) {
+                        applyImpulse(*circle, *plane, manifold);
+                    }
+                    continue;
+                }
 
-                Manifold manifold;
-                const PlaneShape& plane = static_cast<const PlaneShape&>(*other->shape);
-                if (detectCircleVsPlane(*body, plane, manifold)) {
-                    applyImpulse(*body, manifold);
+                if (bodies[i]->shape->getType() == ShapeType::Circle && bodies[j]->shape->getType() == ShapeType::Circle) {
+                    if (bodies[i]->invMass == 0.0f && bodies[j]->invMass == 0.0f) continue;
+                    Manifold manifold;
+                    if (detectCircleCircle(*bodies[i], *bodies[j], manifold)) {
+                        applyImpulse(*bodies[i], *bodies[j], manifold);
+                    }
                 }
             }
         }
