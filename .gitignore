@@ -370,3 +370,6 @@ FodyWeavers.xsd
 04_TESTING_AND_PROFILING.md
 05_AGENT_WORKFLOW.md
 06_ROADMAP.md
+
+# ImGui auto-generated preferences
+imgui.ini

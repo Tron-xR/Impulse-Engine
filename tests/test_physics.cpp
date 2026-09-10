@@ -7,6 +7,7 @@
 #include "physics/RigidBody.h"
 #include "physics/World.h"
 #include "collision/CollisionDetect.h"
+#include "scenario_library.h"
 
 constexpr float TOLERANCE = 1e-3f;
 
@@ -546,6 +547,70 @@ void testRestingNoBounce() {
     std::cout << "    final pos.y=" << c->position.y << " vel.y=" << c->velocity.y << "\n";
 }
 
+void testOrbitStability() {
+    World w(Vec2(0.0f, 0.0f), 1.0f / 120.0f);
+    w.attractor.enabled = true;
+    w.attractor.position = Vec2(0.0f, 0.0f);
+    w.attractor.strength = 500000.0f;
+    w.addBody(Vec2(0.0f, 0.0f), 0.0f, std::make_unique<CircleShape>(15.0f), 1.0f);
+    RigidBody* orbiter = w.addBody(Vec2(150.0f, 0.0f), 1.0f, std::make_unique<CircleShape>(10.0f), 1.0f);
+    orbiter->velocity = Vec2(0.0f, 57.74f);
+    float maxR = 0.0f;
+    bool nanDetected = false;
+    for (int i = 0; i < 1200; ++i) {
+        w.step();
+        float r = orbiter->position.length();
+        if (r > maxR) maxR = r;
+        if (std::isnan(orbiter->position.x) || std::isnan(orbiter->position.y)) nanDetected = true;
+    }
+    CHECK(!nanDetected);
+    CHECK(maxR < 400.0f);
+    CHECK(maxR > 50.0f);
+    std::cout << "  PASS: Orbit stability (maxR=" << maxR << ", no NaN)\n";
+}
+
+void testRadialImpulseMomentum() {
+    World w(Vec2(0.0f, 0.0f), 1.0f / 120.0f);
+    RigidBody* a = w.addBody(Vec2(100.0f, 0.0f), 2.0f, std::make_unique<CircleShape>(10.0f), 0.5f);
+    RigidBody* b = w.addBody(Vec2(-100.0f, 0.0f), 3.0f, std::make_unique<CircleShape>(10.0f), 0.5f);
+    w.applyRadialImpulse(Vec2(0.0f, 0.0f), 200.0f);
+    CHECK(!std::isnan(a->velocity.x) && !std::isnan(a->velocity.y));
+    CHECK(!std::isnan(b->velocity.x) && !std::isnan(b->velocity.y));
+    CHECK(a->velocity.x > 0.0f);
+    CHECK(b->velocity.x < 0.0f);
+    CHECK(std::fabs(a->velocity.length() - 200.0f) < 0.01f);
+    CHECK(std::fabs(b->velocity.length() - 200.0f) < 0.01f);
+    std::cout << "  PASS: Radial impulse pushes bodies outward (vA=" << a->velocity.x << ", vB=" << b->velocity.x << ")\n";
+}
+
+void testRemoveBody() {
+    World w(Vec2(0.0f, -980.0f), 1.0f / 120.0f);
+    addFloor(w);
+    w.addBody(Vec2(0.0f, 200.0f), 1.0f, std::make_unique<CircleShape>(10.0f), 0.5f);
+    RigidBody* target = w.addBody(Vec2(100.0f, 100.0f), 2.0f, std::make_unique<CircleShape>(15.0f), 0.5f);
+    w.addBody(Vec2(-50.0f, 50.0f), 1.5f, std::make_unique<CircleShape>(12.0f), 0.5f);
+    CHECK(w.bodies.size() == 4);
+    CHECK(w.removeBody(target));
+    CHECK(w.bodies.size() == 3);
+    CHECK(!w.removeBody(target));
+    w.step();
+    CHECK(w.bodies.size() == 3);
+    std::cout << "  PASS: removeBody works (size=" << w.bodies.size() << ")\n";
+}
+
+void testClearBodies() {
+    World w(Vec2(0.0f, -980.0f), 1.0f / 120.0f);
+    addFloor(w);
+    w.addBody(Vec2(0.0f, 200.0f), 1.0f, std::make_unique<CircleShape>(10.0f), 0.5f);
+    w.addBody(Vec2(100.0f, 100.0f), 2.0f, std::make_unique<CircleShape>(15.0f), 0.5f);
+    CHECK(w.bodies.size() == 3);
+    w.clearBodies();
+    CHECK(w.bodies.size() == 0);
+    w.step();
+    CHECK(w.bodies.size() == 0);
+    std::cout << "  PASS: clearBodies empties world (size=" << w.bodies.size() << ")\n";
+}
+
 int main() {
     std::cout << "ImpulseEngine Unit Tests\n";
     std::cout << "========================\n";
@@ -571,6 +636,10 @@ int main() {
     testFrictionStopsSlidingBlock();
     testFrictionRampOrdering();
     testBoxStack10Stable();
+    testOrbitStability();
+    testRadialImpulseMomentum();
+    testRemoveBody();
+    testClearBodies();
 
     std::cout << "========================\n";
     std::cout << "All tests passed.\n";

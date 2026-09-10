@@ -4,6 +4,14 @@
 #include "../collision/CollisionDetect.h"
 #include <vector>
 #include <memory>
+#include <algorithm>
+#include <cmath>
+
+struct GravityWell {
+    Vec2 position = { 0.0f, 0.0f };
+    float strength = 0.0f;
+    bool enabled = false;
+};
 
 class World {
 public:
@@ -13,6 +21,7 @@ public:
     int solverIterations = 15;
     float positionCorrectionPercent = 1.0f;
     float positionSlop = 0.01f;
+    GravityWell attractor;
 
     World(const Vec2& gravity = Vec2(0.0f, -980.0f), float fixedDt = 1.0f / 120.0f)
         : gravity(gravity)
@@ -24,10 +33,38 @@ public:
         return bodies.back().get();
     }
 
+    bool removeBody(RigidBody* ptr) {
+        auto it = std::find_if(bodies.begin(), bodies.end(),
+                               [ptr](const std::unique_ptr<RigidBody>& b) { return b.get() == ptr; });
+        if (it == bodies.end()) return false;
+        bodies.erase(it);
+        return true;
+    }
+
+    void clearBodies() { bodies.clear(); }
+
+    void applyRadialImpulse(const Vec2& center, float strength) {
+        for (auto& body : bodies) {
+            if (body->invMass == 0.0f) continue;
+            Vec2 dir = body->position - center;
+            float dist = dir.length();
+            if (dist < 1e-4f) continue;
+            body->velocity += (dir / dist) * strength;
+        }
+    }
+
     void step() {
         for (auto& body : bodies) {
             if (body->invMass == 0.0f) continue;
             body->applyForce(gravity * body->mass);
+            if (attractor.enabled) {
+                Vec2 dir = attractor.position - body->position;
+                float distSq = dir.lengthSq();
+                if (distSq > 1e-8f) {
+                    float dist = std::sqrt(distSq);
+                    body->applyForce((dir / dist) * attractor.strength * body->mass / distSq);
+                }
+            }
         }
 
         for (auto& body : bodies) {
