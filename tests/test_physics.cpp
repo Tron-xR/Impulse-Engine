@@ -7,6 +7,7 @@
 #include "physics/RigidBody.h"
 #include "physics/World.h"
 #include "collision/CollisionDetect.h"
+#include "diagnostics/Diagnostics.h"
 #include "scenario_library.h"
 
 constexpr float TOLERANCE = 1e-3f;
@@ -611,6 +612,109 @@ void testClearBodies() {
     std::cout << "  PASS: clearBodies empties world (size=" << w.bodies.size() << ")\n";
 }
 
+void testProfilerBasic() {
+    FrameProfiler p;
+    p.beginPhase("test");
+    volatile float x = 0;
+    for (int i = 0; i < 1000; ++i) x += 1.0f;
+    p.endPhase();
+    CHECK(p.getPhases().size() == 1);
+    CHECK(p.getPhases()[0].microseconds > 0.0);
+    CHECK(p.getTotalMicroseconds() > 0.0);
+    std::cout << "  PASS: Profiler basic (phase=" << p.getPhases()[0].microseconds << " us)\n";
+}
+
+void testProfilerMultiplePhases() {
+    FrameProfiler p;
+    p.beginPhase("A"); p.endPhase();
+    p.beginPhase("B"); p.endPhase();
+    p.beginPhase("C"); p.endPhase();
+    CHECK(p.getPhases().size() == 3);
+    CHECK(p.getPhases()[0].name[0] == 'A');
+    CHECK(p.getPhases()[1].name[0] == 'B');
+    CHECK(p.getPhases()[2].name[0] == 'C');
+    std::cout << "  PASS: Profiler multiple phases (total=" << p.getTotalMicroseconds() << " us)\n";
+}
+
+void testDetectorNaN() {
+    InstabilityDetector d;
+    d.checkBody(0, std::nanf(""), 0.0f, 0.0f, 0.0f);
+    CHECK(d.hasEvents());
+    CHECK(d.getEvents().size() == 1);
+    CHECK(d.getEvents()[0].type == InstabilityEvent::NaN_detected);
+    std::cout << "  PASS: Detector catches NaN\n";
+}
+
+void testDetectorInf() {
+    InstabilityDetector d;
+    d.checkBody(1, 0.0f, std::numeric_limits<float>::infinity(), 0.0f, 0.0f);
+    CHECK(d.hasEvents());
+    CHECK(d.getEvents()[0].type == InstabilityEvent::Inf_detected);
+    std::cout << "  PASS: Detector catches Inf\n";
+}
+
+void testDetectorVelocityThreshold() {
+    InstabilityDetector d;
+    d.maxVelocity = 100.0f;
+    d.checkBody(2, 0.0f, 0.0f, 500.0f, 0.0f);
+    CHECK(d.hasEvents());
+    CHECK(d.getEvents()[0].type == InstabilityEvent::velocity_threshold);
+    std::cout << "  PASS: Detector catches velocity threshold\n";
+}
+
+void testDetectorPositionThreshold() {
+    InstabilityDetector d;
+    d.maxPosition = 500.0f;
+    d.checkBody(3, 1000.0f, 0.0f, 0.0f, 0.0f);
+    CHECK(d.hasEvents());
+    CHECK(d.getEvents()[0].type == InstabilityEvent::position_threshold);
+    std::cout << "  PASS: Detector catches position threshold\n";
+}
+
+void testDetectorCleanBody() {
+    InstabilityDetector d;
+    d.checkBody(4, 100.0f, -200.0f, 50.0f, -30.0f);
+    CHECK(!d.hasEvents());
+    std::cout << "  PASS: Detector clean body (no false positives)\n";
+}
+
+void testDetectorReset() {
+    InstabilityDetector d;
+    d.checkBody(0, std::nanf(""), 0.0f, 0.0f, 0.0f);
+    CHECK(d.hasEvents());
+    d.reset();
+    CHECK(!d.hasEvents());
+    std::cout << "  PASS: Detector reset clears events\n";
+}
+
+void testProfilerReset() {
+    FrameProfiler p;
+    p.beginPhase("A"); p.endPhase();
+    CHECK(p.getPhases().size() == 1);
+    p.reset();
+    CHECK(p.getPhases().size() == 0);
+    std::cout << "  PASS: Profiler reset clears phases\n";
+}
+
+void testWorldStepProfiles() {
+    World w(Vec2(0.0f, -980.0f), 1.0f / 120.0f);
+    addFloor(w);
+    w.addBody(Vec2(0.0f, 200.0f), 1.0f, std::make_unique<CircleShape>(10.0f), 0.5f);
+    w.step();
+    CHECK(w.profiler.getPhases().size() == 5);
+    CHECK(w.profiler.getTotalMicroseconds() > 0.0);
+    CHECK(!w.detector.hasEvents());
+    std::cout << "  PASS: World::step profiles 5 phases (total=" << w.profiler.getTotalMicroseconds() << " us)\n";
+}
+
+void testBrokenScenarioDetector() {
+    World w(Vec2(0.0f, -9800000.0f), 1.0f / 120.0f);
+    w.addBody(Vec2(0.0f, 200.0f), 1.0f, std::make_unique<CircleShape>(25.0f), 0.5f);
+    for (int i = 0; i < 15; ++i) w.step();
+    CHECK(w.detector.hasEvents());
+    std::cout << "  PASS: Broken scenario triggers instability detector (" << w.detector.getEvents().size() << " events)\n";
+}
+
 int main() {
     std::cout << "ImpulseEngine Unit Tests\n";
     std::cout << "========================\n";
@@ -640,6 +744,17 @@ int main() {
     testRadialImpulseMomentum();
     testRemoveBody();
     testClearBodies();
+    testProfilerBasic();
+    testProfilerMultiplePhases();
+    testDetectorNaN();
+    testDetectorInf();
+    testDetectorVelocityThreshold();
+    testDetectorPositionThreshold();
+    testDetectorCleanBody();
+    testDetectorReset();
+    testProfilerReset();
+    testWorldStepProfiles();
+    testBrokenScenarioDetector();
 
     std::cout << "========================\n";
     std::cout << "All tests passed.\n";

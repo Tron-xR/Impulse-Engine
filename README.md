@@ -16,10 +16,11 @@ Impulse Engine provides:
 - a fixed-timestep simulation loop decoupled from render rate, for
   deterministic, frame-rate-independent physics
 - an interactive ImGui sandbox for spawning bodies, tuning parameters, and
-  loading pre-built stress-test scenarios (11 built-in)
+  loading pre-built stress-test scenarios (12 built-in)
 - gravity wells (attractors) for orbital and radial-gravity effects
-- built-in diagnostics: live FPS/body/pair counts, debug overlay (AABBs,
-  velocity vectors)
+- built-in diagnostics: frame-time profiler with per-phase breakdown,
+  instability detector (NaN/Inf/velocity/position thresholds), debug overlay
+  (AABBs, velocity vectors)
 
 This is a from-scratch educational/portfolio implementation — no external
 physics library (Box2D, Chipmunk, etc.) is used for the simulation core.
@@ -35,10 +36,11 @@ physics library (Box2D, Chipmunk, etc.) is used for the simulation core.
 ImpulseEngine/
 ├── physics/             # Physics core: Vec2, RigidBody, World
 ├── collision/           # CollisionDetect: SAT narrow-phase + impulse solver
+├── diagnostics/         # Frame profiler + instability detector
 ├── glad/                # GLAD OpenGL loader
 ├── imgui/               # Dear ImGui (v1.91.8, cloned)
-├── tests/               # Unit tests (26 tests)
-├── scenario_library.h   # 11 pre-built scenarios
+├── tests/               # Unit tests (38 tests)
+├── scenario_library.h   # 12 pre-built scenarios
 ├── main.cpp             # Interactive ImGui sandbox application
 ├── 01_SCOPE_AND_REQUIREMENTS.md
 ├── 02_ARCHITECTURE.md
@@ -53,9 +55,9 @@ ImpulseEngine/
 └── README.md
 ```
 
-## Current Milestone: M6 (ImGui Sandbox)
+## Current Milestone: M7 (Diagnostics & Instability Detection)
 
-The engine supports 11 built-in scenarios selectable via the ImGui dropdown:
+The engine supports 12 built-in scenarios selectable via the ImGui dropdown:
 
 | # | Scenario | Description |
 |---|---|---|
@@ -70,6 +72,21 @@ The engine supports 11 built-in scenarios selectable via the ImGui dropdown:
 | 9 | Mixed Shapes Mosaic | 100 circles + boxes in a walled container |
 | 10 | Explosion | Radial impulse burst on 60 circles |
 | 11 | Stress Ramp (150+) | 150 circles in a walled container |
+| 12 | [BROKEN] Extreme Velocity | Extreme gravity — sanity check for instability detector |
+
+## Diagnostics (M7)
+
+Each physics step is profiled into 5 phases, shown live in the ImGui panel:
+
+- Apply Forces
+- Integrate Velocity
+- Resolve Collisions
+- Integrate Position
+- Detect Instability
+
+The instability detector flags NaN/Inf values and bodies exceeding velocity or
+position thresholds. Selecting scenario 12 (deliberately broken) demonstrates
+the detector catching a divergent simulation.
 
 ## Controls
 
@@ -118,7 +135,7 @@ Run tests:
 bin\Debug\ImpulseEngineTests.exe
 ```
 
-**Test results (M6): 26 tests, all passing (Debug + ASan).**
+**Test results (M7): 38 tests, all passing (Debug + ASan).**
 
 ## Agent Guidance
 

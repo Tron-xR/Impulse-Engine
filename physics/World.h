@@ -2,6 +2,7 @@
 
 #include "RigidBody.h"
 #include "../collision/CollisionDetect.h"
+#include "../diagnostics/Diagnostics.h"
 #include <vector>
 #include <memory>
 #include <algorithm>
@@ -22,6 +23,8 @@ public:
     float positionCorrectionPercent = 1.0f;
     float positionSlop = 0.01f;
     GravityWell attractor;
+    FrameProfiler profiler;
+    InstabilityDetector detector;
 
     World(const Vec2& gravity = Vec2(0.0f, -980.0f), float fixedDt = 1.0f / 120.0f)
         : gravity(gravity)
@@ -54,6 +57,10 @@ public:
     }
 
     void step() {
+        profiler.reset();
+        detector.reset();
+
+        profiler.beginPhase("Apply Forces");
         for (auto& body : bodies) {
             if (body->invMass == 0.0f) continue;
             body->applyForce(gravity * body->mass);
@@ -66,19 +73,34 @@ public:
                 }
             }
         }
+        profiler.endPhase();
 
+        profiler.beginPhase("Integrate Velocity");
         for (auto& body : bodies) {
             if (body->invMass == 0.0f) continue;
             body->velocity += body->force * body->invMass * fixedDt;
             body->clearForces();
         }
+        profiler.endPhase();
 
+        profiler.beginPhase("Resolve Collisions");
         resolveCollisions();
+        profiler.endPhase();
 
+        profiler.beginPhase("Integrate Position");
         for (auto& body : bodies) {
             if (body->invMass == 0.0f) continue;
             body->position += body->velocity * fixedDt;
         }
+        profiler.endPhase();
+
+        profiler.beginPhase("Detect Instability");
+        for (size_t i = 0; i < bodies.size(); ++i) {
+            auto& body = bodies[i];
+            detector.checkBody(static_cast<int>(i), body->position.x, body->position.y,
+                               body->velocity.x, body->velocity.y);
+        }
+        profiler.endPhase();
     }
 
 private:

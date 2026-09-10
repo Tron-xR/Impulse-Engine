@@ -224,6 +224,14 @@ inline void stressRamp(World& world) {
     }
 }
 
+inline void brokenExtremeVelocity(World& world) {
+    world.clearBodies();
+    world.gravity = Vec2(0.0f, -9800000.0f);
+    world.attractor = GravityWell();
+    addFloor(world, -220.0f, 0.0f, 0.6f);
+    world.addBody(Vec2(0.0f, 200.0f), 1.0f, std::make_unique<CircleShape>(25.0f), 0.5f);
+}
+
 } // namespace scenarios
 
 inline const std::vector<Scenario>& getScenarioList() {
@@ -239,6 +247,7 @@ inline const std::vector<Scenario>& getScenarioList() {
         { "9. Mixed Shapes Mosaic",  scenarios::mixedShapesMosaic },
         { "10. Explosion",           scenarios::explosion },
         { "11. Stress Ramp (150+)",  scenarios::stressRamp },
+        { "12. [BROKEN] Extreme Velocity", scenarios::brokenExtremeVelocity },
     };
     return list;
 }

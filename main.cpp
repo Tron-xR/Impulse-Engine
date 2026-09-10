@@ -522,6 +522,25 @@ int main(int argc, char** argv) {
             }
 
             ImGui::Separator();
+            ImGui::Text("Diagnostics");
+
+            if (world.profiler.getPhases().size() > 0) {
+                ImGui::Text("Step time: %.1f us", world.profiler.getTotalMicroseconds());
+                for (const auto& phase : world.profiler.getPhases()) {
+                    float pct = (float)(phase.microseconds / world.profiler.getTotalMicroseconds() * 100.0);
+                    ImGui::Text("  %s: %.1f us (%.0f%%)", phase.name, phase.microseconds, pct);
+                }
+            }
+
+            if (world.detector.hasEvents()) {
+                ImGui::Separator();
+                ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "INSTABILITY DETECTED");
+                for (const auto& evt : world.detector.getEvents()) {
+                    ImGui::TextWrapped("%s", world.detector.describeEvent(evt).c_str());
+                }
+            }
+
+            ImGui::Separator();
             ImGui::Checkbox("Overlay (F1)", &showOverlay);
             ImGui::Checkbox("Diagnostics (F2)", &showDiagnostics);
             ImGui::SameLine();
