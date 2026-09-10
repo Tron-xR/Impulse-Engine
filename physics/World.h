@@ -10,8 +10,8 @@ public:
     std::vector<std::unique_ptr<RigidBody>> bodies;
     Vec2 gravity;
     float fixedDt;
-    int solverIterations = 4;
-    float positionCorrectionPercent = 0.8f;
+    int solverIterations = 15;
+    float positionCorrectionPercent = 1.0f;
     float positionSlop = 0.01f;
 
     World(const Vec2& gravity = Vec2(0.0f, -980.0f), float fixedDt = 1.0f / 120.0f)
@@ -50,6 +50,7 @@ private:
         RigidBody* b = nullptr;
         Manifold manifold;
         bool contact = false;
+        float normalImpulseAccum = 0.0f;
     };
 
     static const PlaneShape& asPlane(const RigidBody& body) {
@@ -90,23 +91,37 @@ private:
     }
 
     void resolveCollisions() {
-        for (int iteration = 0; iteration < solverIterations; ++iteration) {
-            for (size_t i = 0; i < bodies.size(); ++i) {
-                for (size_t j = i + 1; j < bodies.size(); ++j) {
-                    PairContact pc = detectPair(*bodies[i], *bodies[j]);
-                    if (pc.contact) {
-                        applyImpulse(*pc.a, *pc.b, pc.manifold);
-                    }
-                }
-            }
-        }
-
+        std::vector<PairContact> state;
         for (size_t i = 0; i < bodies.size(); ++i) {
             for (size_t j = i + 1; j < bodies.size(); ++j) {
                 PairContact pc = detectPair(*bodies[i], *bodies[j]);
                 if (pc.contact) {
-                    applyPositionalCorrection(*pc.a, *pc.b, pc.manifold,
-                                              positionCorrectionPercent, positionSlop);
+                    state.push_back(pc);
+                }
+            }
+        }
+
+        for (int iteration = 0; iteration < solverIterations; ++iteration) {
+            for (PairContact& pc : state) {
+                if (pc.a->invMass == 0.0f && pc.b->invMass == 0.0f) continue;
+                pc.normalImpulseAccum += applyImpulse(*pc.a, *pc.b, pc.manifold);
+                applyFrictionImpulse(*pc.a, *pc.b, pc.manifold, pc.normalImpulseAccum);
+            }
+        }
+
+        for (PairContact& pc : state) {
+            if (pc.a->invMass == 0.0f && pc.b->invMass == 0.0f) continue;
+            applyFrictionImpulse(*pc.a, *pc.b, pc.manifold, pc.normalImpulseAccum);
+        }
+
+        for (int p = 0; p < 3; ++p) {
+            for (size_t i = 0; i < bodies.size(); ++i) {
+                for (size_t j = i + 1; j < bodies.size(); ++j) {
+                    PairContact pc = detectPair(*bodies[i], *bodies[j]);
+                    if (pc.contact) {
+                        applyPositionalCorrection(*pc.a, *pc.b, pc.manifold,
+                                                  positionCorrectionPercent, positionSlop);
+                    }
                 }
             }
         }

@@ -223,7 +223,7 @@ int main(int argc, char* argv[]) {
     world.addBody(Vec2(0.0f, FLOOR_Y - 10.0f), 0.0f, std::move(floorPlane));
 
     constexpr float BOX_HALF = 25.0f;
-    for (int i = 0; i < 4; ++i) {
+    for (int i = 0; i < 10; ++i) {
         RigidBody* box = world.addBody(Vec2(-300.0f, FLOOR_Y + BOX_HALF + 2.0f * BOX_HALF * i), 1.0f,
                                        std::make_unique<PolygonShape>(PolygonShape::makeBox(BOX_HALF, BOX_HALF, 0.0f)), 0.0f);
         box->position.y = FLOOR_Y + BOX_HALF + 2.0f * BOX_HALF * i;

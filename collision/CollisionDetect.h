@@ -191,13 +191,13 @@ bool detectCircleCircle(const RigidBody& a, const RigidBody& b, Manifold& out) {
     return true;
 }
 
-void applyImpulse(RigidBody& a, RigidBody& b, const Manifold& manifold) {
+float applyImpulse(RigidBody& a, RigidBody& b, const Manifold& manifold) {
     Vec2 relativeVelocity = a.velocity - b.velocity;
     float velocityAlongNormal = relativeVelocity.dot(manifold.normal);
-    if (velocityAlongNormal >= 0.0f) return;
+    if (velocityAlongNormal >= 0.0f) return 0.0f;
 
     float invMassSum = a.invMass + b.invMass;
-    if (invMassSum == 0.0f) return;
+    if (invMassSum == 0.0f) return 0.0f;
 
     constexpr float RESTITUTION_VELOCITY_THRESHOLD = 30.0f;
     float e = manifold.restitution;
@@ -205,6 +205,30 @@ void applyImpulse(RigidBody& a, RigidBody& b, const Manifold& manifold) {
 
     float j = -(1.0f + e) * velocityAlongNormal / invMassSum;
     Vec2 impulse = manifold.normal * j;
+    a.velocity += impulse * a.invMass;
+    b.velocity -= impulse * b.invMass;
+    return j;
+}
+
+void applyFrictionImpulse(RigidBody& a, RigidBody& b, const Manifold& manifold,
+                          float accumulatedNormalImpulse) {
+    Vec2 tangent = Vec2(-manifold.normal.y, manifold.normal.x);
+    if (tangent.lengthSq() < 1e-12f) return;
+
+    Vec2 relativeVelocity = a.velocity - b.velocity;
+    float velocityAlongTangent = relativeVelocity.dot(tangent);
+    if (std::fabs(velocityAlongTangent) < 1e-4f) return;
+
+    float invMassSum = a.invMass + b.invMass;
+    if (invMassSum == 0.0f) return;
+
+    float mu = std::sqrt(a.shape->friction * b.shape->friction);
+    float maxFriction = mu * std::fabs(accumulatedNormalImpulse);
+    float jt = -velocityAlongTangent / invMassSum;
+    if (maxFriction <= 0.0f) return;
+    jt = std::max(-maxFriction, std::min(jt, maxFriction));
+
+    Vec2 impulse = tangent * jt;
     a.velocity += impulse * a.invMass;
     b.velocity -= impulse * b.invMass;
 }

@@ -431,6 +431,99 @@ void testBoxStackStable() {
     std::cout << "  PASS: 4-box stack stays stable (M4 done criterion)\n";
 }
 
+void testFrictionStopsSlidingBlock() {
+    World world(Vec2(0.0f, -980.0f), 1.0f / 120.0f);
+    constexpr float FLOOR_Y = -220.0f;
+    world.addBody(Vec2(0.0f, FLOOR_Y - 10.0f), 0.0f,
+                  std::make_unique<PlaneShape>(Vec2(0.0f, 1.0f), FLOOR_Y, 0.0f, 1.0f));
+
+    RigidBody* grip = world.addBody(Vec2(-100.0f, FLOOR_Y + 20.0f), 1.0f,
+                                    std::make_unique<PolygonShape>(PolygonShape::makeBox(20.0f, 20.0f, 0.0f, 1.0f)), 0.0f);
+    grip->velocity.x = 100.0f;
+
+    RigidBody* ice = world.addBody(Vec2(100.0f, FLOOR_Y + 20.0f), 1.0f,
+                                   std::make_unique<PolygonShape>(PolygonShape::makeBox(20.0f, 20.0f, 0.0f, 0.0f)), 0.0f);
+    ice->velocity.x = 100.0f;
+
+    for (int i = 0; i < 600; ++i) {
+        world.step();
+        if (!std::isfinite(grip->position.x) || !std::isfinite(ice->position.x)) break;
+    }
+
+    CHECK(std::fabs(grip->velocity.x) < 2.0f);
+    CHECK(std::fabs(ice->velocity.x - 100.0f) < 2.0f);
+
+    std::cout << "  PASS: friction stops a sliding block (vx " << grip->velocity.x
+              << ") while u=0 block keeps sliding (vx " << ice->velocity.x << ")\n";
+}
+
+void testFrictionRampOrdering() {
+    constexpr float FLOOR_Y = -220.0f;
+    constexpr float INITIAL_VX = 150.0f;
+    constexpr int STEPS = 400;
+    float travelled[3] = { 0.0f, 0.0f, 0.0f };
+
+    const float frictions[3] = { 0.0f, 0.3f, 1.0f };
+    for (int k = 0; k < 3; ++k) {
+        World world(Vec2(0.0f, -980.0f), 1.0f / 120.0f);
+        world.addBody(Vec2(0.0f, FLOOR_Y - 10.0f), 0.0f,
+                      std::make_unique<PlaneShape>(Vec2(0.0f, 1.0f), FLOOR_Y, 0.0f, 1.0f));
+        RigidBody* block = world.addBody(
+            Vec2(0.0f, FLOOR_Y + 20.0f), 1.0f,
+            std::make_unique<PolygonShape>(PolygonShape::makeBox(20.0f, 20.0f, 0.0f, frictions[k])), 0.0f);
+        block->velocity.x = INITIAL_VX;
+
+        for (int i = 0; i < STEPS; ++i) {
+            world.step();
+        }
+        travelled[k] = block->position.x;
+    }
+
+    CHECK(std::fabs(travelled[0] - INITIAL_VX / 120.0f * STEPS) < 5.0f);
+    CHECK(travelled[2] < travelled[1]);
+    CHECK(travelled[1] < travelled[0] * 0.5f);
+
+    std::cout << "  PASS: friction ramp ordering (u=1.0 travelled=" << travelled[2]
+              << " < u=0.3 travelled=" << travelled[1]
+              << " < u=0.0 travelled=" << travelled[0] << ")\n";
+}
+
+void testBoxStack10Stable() {
+    World world(Vec2(0.0f, -980.0f), 1.0f / 120.0f);
+    constexpr float FLOOR_Y = -220.0f;
+    constexpr float HALF = 25.0f;
+    constexpr int COUNT = 10;
+    world.addBody(Vec2(0.0f, FLOOR_Y - 10.0f), 0.0f,
+                  std::make_unique<PlaneShape>(Vec2(0.0f, 1.0f), FLOOR_Y, 0.0f, 0.6f));
+
+    std::vector<RigidBody*> stack;
+    stack.reserve(COUNT);
+    for (int i = 0; i < COUNT; ++i) {
+        RigidBody* box = world.addBody(
+            Vec2(0.0f, FLOOR_Y + HALF + 2.0f * HALF * i), 1.0f,
+            std::make_unique<PolygonShape>(PolygonShape::makeBox(HALF, HALF, 0.0f, 0.5f)), 0.0f);
+        stack.push_back(box);
+    }
+
+    for (int i = 0; i < 2400; ++i) {
+        world.step();
+    }
+
+    float maxSink = 0.0f;
+    for (int i = 0; i < COUNT; ++i) {
+        float expectedY = FLOOR_Y + HALF + 2.0f * HALF * i;
+        std::cout << "    box" << i << " expectedY=" << expectedY
+                  << " y=" << stack[i]->position.y << " vy=" << stack[i]->velocity.y
+                  << " y-expected=" << (stack[i]->position.y - expectedY) << "\n";
+        maxSink = std::max(maxSink, std::fabs(stack[i]->position.y - expectedY));
+        CHECK(std::fabs(stack[i]->position.y - expectedY) < 3.0f);
+        CHECK(std::fabs(stack[i]->position.x) < 0.5f);
+        CHECK(std::fabs(stack[i]->velocity.y) < 25.0f);
+    }
+
+    std::cout << "  PASS: 10-box stack stays stable (M5 done criterion, max sink " << maxSink << "px)\n";
+}
+
 void testRestingNoBounce() {
     World world(Vec2(0.0f, -980.0f), 1.0f / 120.0f);
     constexpr float FLOOR_Y = -220.0f;
@@ -475,6 +568,9 @@ int main() {
     testPolygonPolygonDetection();
     testCirclePolygonDetection();
     testBoxStackStable();
+    testFrictionStopsSlidingBlock();
+    testFrictionRampOrdering();
+    testBoxStack10Stable();
 
     std::cout << "========================\n";
     std::cout << "All tests passed.\n";
