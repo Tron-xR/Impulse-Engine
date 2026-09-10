@@ -105,6 +105,25 @@ The instability detector flags NaN/Inf values and bodies exceeding velocity or
 position thresholds. Selecting scenario 12 (deliberately broken) demonstrates
 the detector catching a divergent simulation.
 
+## Headless Test Suite (M9)
+
+The test binary runs fully headless (no OpenGL/GLFW dependency) with four
+modes, so CI and local verification never need a display:
+
+- `--unit` (default): the 39 unit tests (math, narrow-phase, solver, impulse
+  resolution vs. analytical results, integration vs. closed-form kinematics).
+- `--scenario`: all 11 healthy scenarios, 600 fixed steps each — asserts no
+  NaN/Inf and no body escaping its container.
+- `--stress`: the same 11 scenarios density-boosted to ≥150 dynamic bodies
+  each (container walls injected where a scenario has none).
+- `--phase`: performance benchmark with per-phase breakdown, including a
+  brute-force vs. spatial-grid comparison on High-Restitution Chaos.
+
+A root `CMakeLists.txt` registers these as CTest tests under the `unit`,
+`scenario`, and `stress` labels (`benchmark` for `--phase`), and
+`.github/workflows/ci.yml` runs unit + scenario on every push/PR and stress on
+a nightly schedule (03:30 UTC) plus manual dispatch.
+
 ## Controls
 
 | Key | Action |
@@ -149,10 +168,20 @@ x64\Debug\ImpulseEngine.exe --frames 30
 Run tests:
 
 ```bash
-bin\Debug\ImpulseEngineTests.exe
+bin\Debug\ImpulseEngineTests.exe           # unit tests (default)
+bin\Release\ImpulseEngineTests.exe --scenario   # 11 scenarios, 600 steps
+bin\Release\ImpulseEngineTests.exe --stress     # 11 scenarios, 150+ bodies
+bin\Release\ImpulseEngineTests.exe --phase      # per-phase benchmark
+
+# or via CTest:
+cmake --build build --config Release
+ctest --test-dir build -C Release -L unit
+ctest --test-dir build -C Release -L scenario
+ctest --test-dir build -C Release -L stress
 ```
 
-**Test results (M8): 39 tests, all passing (Debug + Release + ASan).**
+**Test results (M9): 39 unit tests + 11-scenario suite + 11-scenario stress
+suite (≥150 bodies), all passing on Debug, Release, and ASan.**
 
 ## Agent Guidance
 

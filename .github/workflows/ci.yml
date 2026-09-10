@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "30 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Unit + scenario
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+      - name: Build (Release)
+        run: cmake --build build --config Release --parallel
+      - name: Unit tests
+        run: ctest --test-dir build -C Release -L unit --output-on-failure
+      - name: Scenario tests
+        run: ctest --test-dir build -C Release -L scenario --output-on-failure
+
+  stress:
+    name: Scenario stress (150+ bodies)
+    runs-on: windows-latest
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+      - name: Build (Release)
+        run: cmake --build build --config Release --parallel
+      - name: Stress tests
+        run: ctest --test-dir build -C Release -L stress --output-on-failure

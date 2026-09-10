@@ -23,7 +23,7 @@ constexpr float PHYSICS_DT = 1.0f / 120.0f;
 
 class GLFWWindow {
 public:
-    GLFWWindow(int width, int height, const char* title) {
+    GLFWWindow(int width, int height, const char* title, bool visible) {
         if (!glfwInit()) {
             std::cerr << "GLFW init failed\n";
             std::exit(1);
@@ -31,14 +31,22 @@ public:
         glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
         glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
         glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+        glfwWindowHint(GLFW_VISIBLE, visible ? GLFW_TRUE : GLFW_FALSE);
         win = glfwCreateWindow(width, height, title, nullptr, nullptr);
         if (!win) {
+            if (!visible) {
+                std::cerr << "No display/GL context available — skipping headless "
+                             "render smoke test (exit code 2). Physics is still "
+                             "verified by the headless test suite.\n";
+                glfwTerminate();
+                std::exit(2);
+            }
             std::cerr << "Window creation failed\n";
             glfwTerminate();
             std::exit(1);
         }
         glfwMakeContextCurrent(win);
-        glfwSwapInterval(1);
+        glfwSwapInterval(visible ? 1 : 0);
     }
     ~GLFWWindow() { if (win) glfwDestroyWindow(win); glfwTerminate(); }
     GLFWwindow* get() const { return win; }
@@ -154,7 +162,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    GLFWWindow app(SCR_WIDTH, SCR_HEIGHT, "Impulse Engine");
+    GLFWWindow app(SCR_WIDTH, SCR_HEIGHT, "Impulse Engine", !headless);
     GLFWwindow* window = app.get();
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 

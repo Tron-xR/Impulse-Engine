@@ -719,26 +719,76 @@ struct BenchmarkResult {
     const char* name;
     double usPerStep;
     double resolveUsPerStep;
+    double broadphaseUsPerStep;
+    double narrowphaseUsPerStep;
+    double solverUsPerStep;
+    double correctionUsPerStep;
 };
 
 void benchmarkScenario(const char* name, int scenarioIndex, int steps, BenchmarkResult& out) {
     World w(Vec2(0.0f, -980.0f), 1.0f / 120.0f);
+    w.fineProfileEnabled = true;
     loadScenario(w, scenarioIndex);
     for (int i = 0; i < 90; ++i) w.step();
     double total = 0.0;
     double resolveTotal = 0.0;
+    double broadSum = 0.0, narrowSum = 0.0, solverSum = 0.0, corrSum = 0.0;
     for (int i = 0; i < steps; ++i) {
         w.step();
         total += w.profiler.getTotalMicroseconds();
         for (const auto& ph : w.profiler.getPhases()) {
             if (std::string(ph.name) == "Resolve Collisions") resolveTotal += ph.microseconds;
         }
+        broadSum += w.fineBroadphaseUs;
+        narrowSum += w.fineNarrowphaseUs;
+        solverSum += w.fineSolverUs;
+        corrSum += w.fineCorrectionUs;
     }
     out.name = name;
     out.usPerStep = total / steps;
     out.resolveUsPerStep = resolveTotal / steps;
+    out.broadphaseUsPerStep = broadSum / steps;
+    out.narrowphaseUsPerStep = narrowSum / steps;
+    out.solverUsPerStep = solverSum / steps;
+    out.correctionUsPerStep = corrSum / steps;
     std::cout << "    " << name << " (" << w.bodies.size() << " bodies): "
-              << out.usPerStep << " us/step (resolve=" << out.resolveUsPerStep << " us)\n";
+              << out.usPerStep << " us/step (resolve=" << out.resolveUsPerStep
+              << " bp=" << out.broadphaseUsPerStep
+              << " np=" << out.narrowphaseUsPerStep
+              << " solver=" << out.solverUsPerStep
+              << " corr=" << out.correctionUsPerStep << ")\n";
+}
+
+void benchmarkScenarioEx(const char* name, int scenarioIndex, int steps, bool brute) {
+    World w(Vec2(0.0f, -980.0f), 1.0f / 120.0f);
+    w.fineProfileEnabled = true;
+    w.useBruteForceBroadPhase = brute;
+    loadScenario(w, scenarioIndex);
+    for (int i = 0; i < 90; ++i) w.step();
+    double resolveSum = 0.0;
+    double broadSum = 0.0, narrowSum = 0.0, solverSum = 0.0, corrSum = 0.0;
+    for (int i = 0; i < steps; ++i) {
+        w.step();
+        for (const auto& ph : w.profiler.getPhases()) {
+            if (std::string(ph.name) == "Resolve Collisions") resolveSum += ph.microseconds;
+        }
+        broadSum += w.fineBroadphaseUs;
+        narrowSum += w.fineNarrowphaseUs;
+        solverSum += w.fineSolverUs;
+        corrSum += w.fineCorrectionUs;
+    }
+    std::cout << "    " << name << " [" << (brute ? "brute" : "grid") << "]: "
+              << "resolve=" << resolveSum / steps << " us/step "
+              << "broadphase=" << broadSum / steps << " us/step "
+              << "narrowphase=" << narrowSum / steps << " us/step "
+              << "solver=" << solverSum / steps << " us/step "
+              << "correction=" << corrSum / steps << " us/step\n";
+}
+
+void runFinePhaseBreakdown() {
+    std::cout << "\n  CHAOS PHASE BREAKDOWN (High-Restitution Chaos, 84 bodies)\n";
+    benchmarkScenarioEx("Chaos", 7, 600, true);
+    benchmarkScenarioEx("Chaos", 7, 600, false);
 }
 
 void runPerformanceBenchmarks(bool printOnly) {
@@ -752,7 +802,10 @@ void runPerformanceBenchmarks(bool printOnly) {
         std::cout << "    " << r[i].name << ": " << r[i].usPerStep
                   << " us/step, resolve=" << r[i].resolveUsPerStep << " us\n";
     }
-    if (printOnly) return;
+    if (!printOnly) {
+        runFinePhaseBreakdown();
+        return;
+    }
 }
 
 void testGridMatchesBruteForce() {
@@ -800,7 +853,144 @@ void testGridMatchesBruteForce() {
     std::cout << "  PASS: Grid broad-phase matches brute force bit-for-bit (40 circles + 2 boxes + 4 planes, 240 steps)\n";
 }
 
-int main() {
+struct ScenarioCheck {
+    int index;
+    const char* name;
+    int bodies;
+    int steps;
+    bool passed;
+    const char* reason;
+};
+
+constexpr const char* SCENARIO_SUITE_OK = "";
+constexpr const char* SCENARIO_SUITE_NAN = "NaN/Inf";
+constexpr const char* SCENARIO_SUITE_ESCAPE = "escaped container";
+
+void scenarioContainer(int index, float& halfW, float& halfH) {
+    switch (index) {
+    case 3:  halfW = 380.0f; halfH = 280.0f; break;
+    case 7:  halfW = 350.0f; halfH = 260.0f; break;
+    case 8:  halfW = 380.0f; halfH = 280.0f; break;
+    case 9:  halfW = 380.0f; halfH = 280.0f; break;
+    case 10: halfW = 380.0f; halfH = 280.0f; break;
+    default: halfW = 0.0f;    halfH = 0.0f;    break;
+    }
+}
+
+bool scenarioHasWalls(int index) {
+    return index == 3 || index == 7 || index == 8 || index == 9 || index == 10;
+}
+
+bool scenarioBodyWithinBounds(const World& w, float halfW, float halfH) {
+    float boundX = (halfW > 0.0f) ? halfW + 80.0f : 1500.0f;
+    float boundY = (halfH > 0.0f) ? halfH + 80.0f : 1500.0f;
+    for (const auto& body : w.bodies) {
+        if (body->shape->getType() == ShapeType::Plane) continue;
+        if (std::fabs(body->position.x) > boundX) return false;
+        if (std::fabs(body->position.y) > boundY) return false;
+    }
+    return true;
+}
+
+int countDynamicBodies(const World& w) {
+    int count = 0;
+    for (const auto& body : w.bodies) {
+        if (body->shape->getType() != ShapeType::Plane) ++count;
+    }
+    return count;
+}
+
+void densityBoost(World& w, int minDynamic, float halfW, float halfH) {
+    float containerW = (halfW > 0.0f) ? halfW : 400.0f;
+    float containerH = (halfH > 0.0f) ? halfH : 400.0f;
+    int i = 0;
+    while (countDynamicBodies(w) < minDynamic) {
+        float x = -containerW + 20.0f + static_cast<float>(i % 15) * ((2.0f * containerW - 40.0f) / 15.0f);
+        float y = containerH * 0.6f - static_cast<float>(i / 15) * 40.0f;
+        float mass = 0.5f + static_cast<float>(i % 3) * 0.5f;
+        float rest = 0.3f + static_cast<float>(i % 4) * 0.1f;
+        w.addBody(Vec2(x, y), mass, std::make_unique<CircleShape>(8.0f + (i % 3) * 3.0f), rest);
+        ++i;
+    }
+}
+
+ScenarioCheck checkScenario(const Scenario& sc, int index, int steps, bool stress) {
+    ScenarioCheck report;
+    report.index = index;
+    report.name = sc.name;
+    report.steps = steps;
+    report.passed = true;
+    report.reason = SCENARIO_SUITE_OK;
+
+    World w(Vec2(0.0f, -980.0f), 1.0f / 120.0f);
+    sc.build(w);
+
+    float halfW, halfH;
+    scenarioContainer(index, halfW, halfH);
+    if (stress) {
+        if (!scenarioHasWalls(index)) {
+            addContainerWalls(w, (halfW > 0.0f ? halfW : 400.0f),
+                              (halfH > 0.0f ? halfH : 400.0f));
+            halfW = (halfW > 0.0f) ? halfW : 400.0f;
+            halfH = (halfH > 0.0f) ? halfH : 400.0f;
+        }
+        densityBoost(w, 150, halfW, halfH);
+    }
+    report.bodies = countDynamicBodies(w);
+
+    for (int i = 0; i < steps; ++i) {
+        w.step();
+        if (w.detector.hasEvents()) {
+            report.passed = false;
+            report.reason = SCENARIO_SUITE_NAN;
+            break;
+        }
+        if (!scenarioBodyWithinBounds(w, halfW, halfH)) {
+            report.passed = false;
+            report.reason = SCENARIO_SUITE_ESCAPE;
+            break;
+        }
+    }
+    return report;
+}
+
+int runScenarioSuite(bool stress) {
+    std::cout << (stress ? "\n  HEADLESS SCENARIO SUITE (STRESS, 150+ bodies/scenario)\n"
+                         : "\n  HEADLESS SCENARIO SUITE (nominal body counts)\n");
+    const auto& list = getScenarioList();
+    std::vector<ScenarioCheck> reports;
+    int failures = 0;
+    for (int idx = 0; idx < 11; ++idx) {
+        ScenarioCheck r = checkScenario(list[idx], idx, 600, stress);
+        reports.push_back(r);
+        std::cout << "    " << (r.index + 1) << ". " << r.name
+                  << "  bodies=" << r.bodies << " steps=" << r.steps
+                  << "  [" << (r.passed ? "PASS" : "FAIL") << (r.passed ? "]" : " - " + std::string(r.reason) + "]") << "\n";
+        if (!r.passed) ++failures;
+    }
+    std::cout << "    ---------------------------------------------------\n";
+    if (failures == 0) {
+        std::cout << "    All 11 scenarios passed.\n";
+        return 0;
+    }
+    std::cout << "    " << failures << " scenario(s) FAILED.\n";
+    return 1;
+}
+
+int main(int argc, char** argv) {
+    std::string mode = "unit";
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--scenario") mode = "scenario";
+        else if (arg == "--stress") mode = "stress";
+        else if (arg == "--phase") mode = "phase";
+        else if (arg == "--unit") mode = "unit";
+    }
+
+    if (mode == "scenario") return runScenarioSuite(false);
+    if (mode == "stress") return runScenarioSuite(true);
+    if (mode == "phase") { runPerformanceBenchmarks(false); return 0; }
+
     std::cout << "ImpulseEngine Unit Tests\n";
     std::cout << "========================\n";
 

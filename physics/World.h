@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cmath>
 #include <unordered_map>
+#include <chrono>
 
 struct GravityWell {
     Vec2 position = { 0.0f, 0.0f };
@@ -25,6 +26,11 @@ public:
     float positionSlop = 0.01f;
     float cellSize = 120.0f;
     bool useBruteForceBroadPhase = false;
+    bool fineProfileEnabled = false;
+    double fineBroadphaseUs = 0.0;
+    double fineNarrowphaseUs = 0.0;
+    double fineSolverUs = 0.0;
+    double fineCorrectionUs = 0.0;
     GravityWell attractor;
     FrameProfiler profiler;
     InstabilityDetector detector;
@@ -107,6 +113,12 @@ public:
     }
 
 private:
+    using Clock = std::chrono::steady_clock;
+
+    static double elapsedUs(Clock::time_point t0) {
+        return std::chrono::duration<double, std::micro>(Clock::now() - t0).count();
+    }
+
     struct PairContact {
         RigidBody* a = nullptr;
         RigidBody* b = nullptr;
@@ -252,19 +264,26 @@ private:
     }
 
     template <typename Fn>
-    void forEachPair(Fn fn) {
+    void forEachPair(Fn fn, bool countIntoCore = true) {
         if (useBruteForceBroadPhase || cellSize <= 0.0f) {
             for (size_t i = 0; i < bodies.size(); ++i) {
                 for (size_t j = i + 1; j < bodies.size(); ++j) {
+                    auto t0 = (fineProfileEnabled && countIntoCore) ? Clock::now() : Clock::time_point();
                     fn(*bodies[i], *bodies[j]);
+                    if (fineProfileEnabled && countIntoCore) fineNarrowphaseUs += elapsedUs(t0);
                 }
             }
             return;
         }
-        for (int64_t key : collectCandidates()) {
+        auto t0 = Clock::now();
+        auto candidates = collectCandidates();
+        if (fineProfileEnabled && countIntoCore) fineBroadphaseUs += elapsedUs(t0);
+        for (int64_t key : candidates) {
             int a = static_cast<int>(key >> 32);
             int b = static_cast<int>(static_cast<uint32_t>(key & 0xFFFFFFFF));
+            auto t1 = (fineProfileEnabled && countIntoCore) ? Clock::now() : Clock::time_point();
             fn(*bodies[a], *bodies[b]);
+            if (fineProfileEnabled && countIntoCore) fineNarrowphaseUs += elapsedUs(t1);
         }
     }
 
@@ -276,9 +295,14 @@ private:
     }
 
     void resolveCollisions() {
+        if (fineProfileEnabled) {
+            fineBroadphaseUs = fineNarrowphaseUs = fineSolverUs = fineCorrectionUs = 0.0;
+        }
+
         std::vector<PairContact> state;
         detectAllPairs(state);
 
+        auto sol0 = Clock::now();
         for (int iteration = 0; iteration < solverIterations; ++iteration) {
             for (PairContact& pc : state) {
                 if (pc.a->invMass == 0.0f && pc.b->invMass == 0.0f) continue;
@@ -291,7 +315,9 @@ private:
             if (pc.a->invMass == 0.0f && pc.b->invMass == 0.0f) continue;
             applyFrictionImpulse(*pc.a, *pc.b, pc.manifold, pc.normalImpulseAccum);
         }
+        if (fineProfileEnabled) fineSolverUs += elapsedUs(sol0);
 
+        auto cor0 = Clock::now();
         for (int p = 0; p < 3; ++p) {
             forEachPair([this](RigidBody& x, RigidBody& y) {
                 PairContact pc = detectPair(x, y);
@@ -299,8 +325,9 @@ private:
                     applyPositionalCorrection(*pc.a, *pc.b, pc.manifold,
                                               positionCorrectionPercent, positionSlop);
                 }
-            });
+            }, false);
         }
+        if (fineProfileEnabled) fineCorrectionUs += elapsedUs(cor0);
     }
 };
 
