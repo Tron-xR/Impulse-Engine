@@ -39,7 +39,7 @@ ImpulseEngine/
 ├── diagnostics/         # Frame profiler + instability detector
 ├── glad/                # GLAD OpenGL loader
 ├── imgui/               # Dear ImGui (v1.91.8, cloned)
-├── tests/               # Unit tests (38 tests)
+├── tests/               # Unit tests (39 tests)
 ├── scenario_library.h   # 12 pre-built scenarios
 ├── main.cpp             # Interactive ImGui sandbox application
 ├── 01_SCOPE_AND_REQUIREMENTS.md
@@ -55,9 +55,26 @@ ImpulseEngine/
 └── README.md
 ```
 
-## Current Milestone: M7 (Diagnostics & Instability Detection)
+## Current Milestone: M8 (Spatial-Grid Broad-Phase)
 
-The engine supports 12 built-in scenarios selectable via the ImGui dropdown:
+Collision detection now uses a uniform spatial grid (`cellSize = 120` world
+units). Candidate pairs are gathered per cell, deduplicated, sorted into the
+canonical ascending body-index order, and fed to the narrow phase. The pair
+emission order is identical to brute-force detection, so results are
+bit-for-bit reproducible — a regression test (`Grid broad-phase matches brute
+force bit-for-bit`) verifies this over 240 steps on a mixed scene.
+
+The validated impact (Release build, same scenario/hardware, before/after via
+`runPerformanceBenchmarks` in the test binary):
+
+| Scenario (bodies) | Brute force µs/step | Spatial grid µs/step | Speedup |
+|---|---|---|---|
+| Ball Pit (154) | 409.1 | 222.4 | 1.84× |
+| High-Restitution Chaos (84) | 153.4 | 138.1 | 1.11× |
+| Mixed Shapes Mosaic (104) | 1530.6 | 291.9 | 5.24× |
+| Stress Ramp (154) | 413.0 | 187.4 | 2.20× |
+
+The sandbox runs 12 built-in scenarios selectable via the ImGui dropdown:
 
 | # | Scenario | Description |
 |---|---|---|
@@ -135,7 +152,7 @@ Run tests:
 bin\Debug\ImpulseEngineTests.exe
 ```
 
-**Test results (M7): 38 tests, all passing (Debug + ASan).**
+**Test results (M8): 39 tests, all passing (Debug + Release + ASan).**
 
 ## Agent Guidance
 

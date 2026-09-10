@@ -715,6 +715,91 @@ void testBrokenScenarioDetector() {
     std::cout << "  PASS: Broken scenario triggers instability detector (" << w.detector.getEvents().size() << " events)\n";
 }
 
+struct BenchmarkResult {
+    const char* name;
+    double usPerStep;
+    double resolveUsPerStep;
+};
+
+void benchmarkScenario(const char* name, int scenarioIndex, int steps, BenchmarkResult& out) {
+    World w(Vec2(0.0f, -980.0f), 1.0f / 120.0f);
+    loadScenario(w, scenarioIndex);
+    for (int i = 0; i < 90; ++i) w.step();
+    double total = 0.0;
+    double resolveTotal = 0.0;
+    for (int i = 0; i < steps; ++i) {
+        w.step();
+        total += w.profiler.getTotalMicroseconds();
+        for (const auto& ph : w.profiler.getPhases()) {
+            if (std::string(ph.name) == "Resolve Collisions") resolveTotal += ph.microseconds;
+        }
+    }
+    out.name = name;
+    out.usPerStep = total / steps;
+    out.resolveUsPerStep = resolveTotal / steps;
+    std::cout << "    " << name << " (" << w.bodies.size() << " bodies): "
+              << out.usPerStep << " us/step (resolve=" << out.resolveUsPerStep << " us)\n";
+}
+
+void runPerformanceBenchmarks(bool printOnly) {
+    std::cout << "\n  PERFORMANCE BENCHMARKS\n";
+    BenchmarkResult r[4];
+    benchmarkScenario("Ball Pit (150+)", 3, 600, r[0]);
+    benchmarkScenario("High-Restitution Chaos", 7, 600, r[1]);
+    benchmarkScenario("Mixed Shapes Mosaic", 8, 600, r[2]);
+    benchmarkScenario("Stress Ramp (150+)", 10, 600, r[3]);
+    for (int i = 0; i < 4; ++i) {
+        std::cout << "    " << r[i].name << ": " << r[i].usPerStep
+                  << " us/step, resolve=" << r[i].resolveUsPerStep << " us\n";
+    }
+    if (printOnly) return;
+}
+
+void testGridMatchesBruteForce() {
+    World gridWorld(Vec2(0.0f, -980.0f), 1.0f / 120.0f);
+    World bruteWorld(Vec2(0.0f, -980.0f), 1.0f / 120.0f);
+    bruteWorld.useBruteForceBroadPhase = true;
+
+    auto buildScene = [](World& w) {
+        w.addBody(Vec2(0.0f, -260.0f), 0.0f,
+                  std::make_unique<PlaneShape>(Vec2(0.0f, 1.0f), -270.0f, 0.0f));
+        w.addBody(Vec2(-260.0f, 0.0f), 0.0f,
+                  std::make_unique<PlaneShape>(Vec2(1.0f, 0.0f), -260.0f, 0.0f));
+        w.addBody(Vec2(260.0f, 0.0f), 0.0f,
+                  std::make_unique<PlaneShape>(Vec2(-1.0f, 0.0f), 260.0f, 0.0f));
+        w.addBody(Vec2(0.0f, 260.0f), 0.0f,
+                  std::make_unique<PlaneShape>(Vec2(0.0f, -1.0f), 260.0f, 0.0f));
+        for (int i = 0; i < 40; ++i) {
+            float x = -230.0f + 12.0f * (i % 10) + (i % 5);
+            float y = -230.0f + 12.0f * (i / 10) + (i % 3);
+            w.addBody(Vec2(x, y), 1.0f, std::make_unique<CircleShape>(11.0f), 0.3f);
+        }
+        w.addBody(Vec2(200.0f, -200.0f), 2.0f,
+                  std::make_unique<PolygonShape>(PolygonShape::makeBox(30.0f, 30.0f, 0.35f)), 0.4f);
+        w.addBody(Vec2(-195.0f, 190.0f), 2.0f,
+                  std::make_unique<PolygonShape>(PolygonShape::makeBox(28.0f, 36.0f)), 0.2f);
+    };
+    buildScene(gridWorld);
+    buildScene(bruteWorld);
+
+    for (int i = 0; i < 240; ++i) {
+        gridWorld.step();
+        bruteWorld.step();
+    }
+
+    for (size_t i = 0; i < gridWorld.bodies.size(); ++i) {
+        const RigidBody& g = *gridWorld.bodies[i];
+        const RigidBody& b = *bruteWorld.bodies[i];
+        CHECK(g.position.x == b.position.x);
+        CHECK(g.position.y == b.position.y);
+        CHECK(g.velocity.x == b.velocity.x);
+        CHECK(g.velocity.y == b.velocity.y);
+        CHECK(g.angle == b.angle);
+    }
+
+    std::cout << "  PASS: Grid broad-phase matches brute force bit-for-bit (40 circles + 2 boxes + 4 planes, 240 steps)\n";
+}
+
 int main() {
     std::cout << "ImpulseEngine Unit Tests\n";
     std::cout << "========================\n";
@@ -755,6 +840,8 @@ int main() {
     testProfilerReset();
     testWorldStepProfiles();
     testBrokenScenarioDetector();
+    testGridMatchesBruteForce();
+    runPerformanceBenchmarks(true);
 
     std::cout << "========================\n";
     std::cout << "All tests passed.\n";
