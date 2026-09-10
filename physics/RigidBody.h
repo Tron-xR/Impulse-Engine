@@ -2,9 +2,11 @@
 
 #include "Vec2.h"
 #include <memory>
+#include <vector>
 
 enum class ShapeType {
     Circle,
+    Polygon,
     Plane,
 };
 
@@ -20,6 +22,28 @@ public:
 
     explicit CircleShape(float radius) : radius(radius) {}
     ShapeType getType() const override { return ShapeType::Circle; }
+};
+
+class PolygonShape : public Shape {
+public:
+    std::vector<Vec2> vertices;
+    float restitution;
+
+    PolygonShape(std::vector<Vec2> verts, float restitution = 0.3f)
+        : vertices(std::move(verts))
+        , restitution(restitution)
+    {}
+
+    static PolygonShape makeBox(float halfWidth, float halfHeight, float restitution = 0.3f) {
+        std::vector<Vec2> verts;
+        verts.push_back({ -halfWidth, -halfHeight });
+        verts.push_back({  halfWidth, -halfHeight });
+        verts.push_back({  halfWidth,  halfHeight });
+        verts.push_back({ -halfWidth,  halfHeight });
+        return PolygonShape(std::move(verts), restitution);
+    }
+
+    ShapeType getType() const override { return ShapeType::Polygon; }
 };
 
 class PlaneShape : public Shape {
@@ -43,6 +67,7 @@ public:
     Vec2 velocity;
     Vec2 force;
 
+    float angle = 0.0f;
     float mass;
     float invMass;
     float restitution;

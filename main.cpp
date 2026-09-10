@@ -3,6 +3,7 @@
 
 #include <iostream>
 #include <cmath>
+#include <algorithm>
 #include <vector>
 #include <string>
 #include <cstdlib>
@@ -192,7 +193,7 @@ int main(int argc, char* argv[]) {
     uniform vec2 uHalfScreen;
     void main() {
         vec2 worldPos = aPos * uTransform.zw + uTransform.xy;
-        vec2 clipPos = vec2(worldPos.x / uHalfScreen.x, -worldPos.y / uHalfScreen.y);
+        vec2 clipPos = vec2(worldPos.x / uHalfScreen.x, worldPos.y / uHalfScreen.y);
         gl_Position = vec4(clipPos, 0.0, 1.0);
     }
     )";
@@ -221,13 +222,20 @@ int main(int argc, char* argv[]) {
     auto floorPlane = std::make_unique<PlaneShape>(Vec2(0.0f, 1.0f), FLOOR_Y, 0.0f);
     world.addBody(Vec2(0.0f, FLOOR_Y - 10.0f), 0.0f, std::move(floorPlane));
 
+    constexpr float BOX_HALF = 25.0f;
+    for (int i = 0; i < 4; ++i) {
+        RigidBody* box = world.addBody(Vec2(-300.0f, FLOOR_Y + BOX_HALF + 2.0f * BOX_HALF * i), 1.0f,
+                                       std::make_unique<PolygonShape>(PolygonShape::makeBox(BOX_HALF, BOX_HALF, 0.0f)), 0.0f);
+        box->position.y = FLOOR_Y + BOX_HALF + 2.0f * BOX_HALF * i;
+    }
+
     struct Spawn { Vec2 pos; float mass; float radius; Vec2 vel; float restitution; };
     const Spawn spawns[] = {
-        { { -260.0f, 120.0f }, 5.0f, 30.0f, {  40.0f,   0.0f }, 0.85f },
-        { { -100.0f, 200.0f }, 2.0f, 22.0f, {   0.0f,   0.0f }, 0.40f },
-        { {   40.0f, 300.0f }, 3.0f, 18.0f, { -30.0f,   0.0f }, 0.70f },
-        { {  180.0f, 150.0f }, 4.0f, 26.0f, {  20.0f,   0.0f }, 0.90f },
-        { {  320.0f, -80.0f }, 2.0f, 20.0f, { -60.0f,   0.0f }, 0.50f },
+        { { -110.0f, 150.0f }, 2.0f, 22.0f, {  60.0f,   0.0f }, 0.80f },
+        { {   10.0f, 260.0f }, 3.0f, 18.0f, { -40.0f,   0.0f }, 0.65f },
+        { {  130.0f, 200.0f }, 4.0f, 26.0f, {  30.0f,   0.0f }, 0.90f },
+        { {  250.0f, 320.0f }, 2.0f, 20.0f, { -50.0f,   0.0f }, 0.50f },
+        { {  340.0f,  60.0f }, 3.0f, 16.0f, { -20.0f,   0.0f }, 0.75f },
     };
 
     for (const Spawn& s : spawns) {
@@ -235,6 +243,9 @@ int main(int argc, char* argv[]) {
                                         std::make_unique<CircleShape>(s.radius), s.restitution);
         body->velocity = s.vel;
     }
+
+    RigidBody* fallingBox = world.addBody(Vec2(200.0f, 350.0f), 2.0f,
+                                          std::make_unique<PolygonShape>(PolygonShape::makeBox(30.0f, 30.0f, 0.0f)), 0.5f);
 
     glClearColor(0.15f, 0.15f, 0.2f, 1.0f);
 
@@ -295,6 +306,23 @@ int main(int argc, char* argv[]) {
             glUniform4f(colorLoc, c.r, c.g, c.b, 1.0f);
             circleMesh.draw();
             ++spawned;
+        }
+
+        int boxes = 0;
+        for (auto& body : world.bodies) {
+            if (body->shape->getType() != ShapeType::Polygon) continue;
+
+            const PolygonShape& ps = static_cast<const PolygonShape&>(*body->shape);
+            float hw = 0.0f, hh = 0.0f;
+            for (const Vec2& v : ps.vertices) {
+                hw = std::max(hw, std::fabs(v.x));
+                hh = std::max(hh, std::fabs(v.y));
+            }
+            const Rgb& c = palette[(spawned + boxes) % 5];
+            glUniform4f(transformLoc, body->position.x, body->position.y, hw, hh);
+            glUniform4f(colorLoc, c.r, c.g, c.b, 1.0f);
+            rectMesh.draw();
+            ++boxes;
         }
 
         glfwSwapBuffers(app.get());

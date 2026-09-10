@@ -171,19 +171,19 @@ void testCirclePlaneImpulseKnownAnswer() {
     Manifold m;
 
     RigidBody body(Vec2(0.0f, -200.0f), 2.0f, std::make_unique<CircleShape>(30.0f), 0.5f);
-    body.velocity = Vec2(0.0f, -10.0f);
+    body.velocity = Vec2(0.0f, -40.0f);
 
     CHECK(detectCircleVsPlane(body, floor, m));
     CHECK(approxEqual(m.restitution, 0.5f));
     applyImpulse(body, staticPlane, m);
-    CHECK(approxEqual(body.velocity.y, 5.0f));
+    CHECK(approxEqual(body.velocity.y, 20.0f));
     CHECK(approxEqual(body.velocity.x, 0.0f));
 
     RigidBody heavy(Vec2(0.0f, -200.0f), 10.0f, std::make_unique<CircleShape>(30.0f), 0.5f);
-    heavy.velocity = Vec2(0.0f, -10.0f);
+    heavy.velocity = Vec2(0.0f, -40.0f);
     CHECK(detectCircleVsPlane(heavy, floor, m));
     applyImpulse(heavy, staticPlane, m);
-    CHECK(approxEqual(heavy.velocity.y, 5.0f));
+    CHECK(approxEqual(heavy.velocity.y, 20.0f));
 
     std::cout << "  PASS: Circle-vs-plane known-answer impulse (v_out = e * v_in, mass-independent)\n";
 }
@@ -211,12 +211,11 @@ void testDropBouncesAndDoesNotSink() {
         CHECK(c->position.y > restY - 12.0f);
     }
 
+    std::cout << "  PASS: Dropped circle bounces and settles at rest height (no sink)\n";
+    std::cout << "    final pos.y=" << c->position.y << " vel.y=" << c->velocity.y << " restY=" << restY << "\n";
     CHECK(bounced);
     CHECK(std::fabs(c->position.y - restY) < 10.0f);
     CHECK(std::fabs(c->velocity.y) < 10.0f);
-
-    std::cout << "  PASS: Dropped circle bounces and settles at rest height (no sink)\n";
-    std::cout << "    final pos.y=" << c->position.y << " vel.y=" << c->velocity.y << "\n";
 }
 
 void testCircleCircleDetection() {
@@ -240,15 +239,15 @@ void testEqualMassElasticVelocitySwap() {
     World world(Vec2(0.0f, 0.0f), 1.0f / 120.0f);
     RigidBody* a = world.addBody(Vec2(-12.0f, 0.0f), 1.0f, std::make_unique<CircleShape>(10.0f), 1.0f);
     RigidBody* b = world.addBody(Vec2(12.0f, 0.0f), 1.0f, std::make_unique<CircleShape>(10.0f), 1.0f);
-    a->velocity = Vec2(10.0f, 0.0f);
-    b->velocity = Vec2(-10.0f, 0.0f);
+    a->velocity = Vec2(20.0f, 0.0f);
+    b->velocity = Vec2(-20.0f, 0.0f);
 
     for (int i = 0; i < 60; ++i) {
         world.step();
     }
 
-    CHECK(approxEqual(a->velocity.x, -10.0f, 0.01f));
-    CHECK(approxEqual(b->velocity.x, 10.0f, 0.01f));
+    CHECK(approxEqual(a->velocity.x, -20.0f, 0.01f));
+    CHECK(approxEqual(b->velocity.x, 20.0f, 0.01f));
     CHECK(approxEqual(a->velocity.y, 0.0f, 0.01f));
     CHECK(approxEqual(b->velocity.y, 0.0f, 0.01f));
     CHECK(approxEqual(a->velocity.x + b->velocity.x, 0.0f, 0.02f));
@@ -262,8 +261,8 @@ void testMomentumConservedUnequalMass() {
     World world(Vec2(0.0f, 0.0f), 1.0f / 120.0f);
     RigidBody* a = world.addBody(Vec2(-12.0f, 0.0f), 1.0f, std::make_unique<CircleShape>(10.0f), 1.0f);
     RigidBody* b = world.addBody(Vec2(12.0f, 0.0f), 3.0f, std::make_unique<CircleShape>(10.0f), 1.0f);
-    a->velocity = Vec2(10.0f, 0.0f);
-    b->velocity = Vec2(-10.0f, 0.0f);
+    a->velocity = Vec2(20.0f, 0.0f);
+    b->velocity = Vec2(-20.0f, 0.0f);
 
     float momentumBefore = a->velocity.x + 3.0f * b->velocity.x;
 
@@ -273,30 +272,30 @@ void testMomentumConservedUnequalMass() {
 
     float momentumAfter = a->velocity.x + 3.0f * b->velocity.x;
     CHECK(approxEqual(momentumAfter, momentumBefore, 0.02f));
-    CHECK(approxEqual(a->velocity.x, -20.0f, 0.02f));
+    CHECK(approxEqual(a->velocity.x, -40.0f, 0.02f));
     CHECK(approxEqual(b->velocity.x, 0.0f, 0.02f));
 
-    std::cout << "  PASS: Unequal-mass elastic collision (momentum conserved, vA'=-20, vB'=0)\n";
+    std::cout << "  PASS: Unequal-mass elastic collision (momentum conserved, vA'=-40, vB'=0)\n";
 }
 
 void testNonElasticCollisionLosesRelativeSpeed() {
     RigidBody a(Vec2(0.0f, 0.0f), 1.0f, std::make_unique<CircleShape>(5.0f), 0.5f);
     RigidBody b(Vec2(9.0f, 0.0f), 1.0f, std::make_unique<CircleShape>(5.0f), 0.5f);
-    a.velocity = Vec2(10.0f, 0.0f);
-    b.velocity = Vec2(-10.0f, 0.0f);
+    a.velocity = Vec2(20.0f, 0.0f);
+    b.velocity = Vec2(-20.0f, 0.0f);
 
     Manifold m;
     CHECK(detectCircleCircle(a, b, m));
     CHECK(approxEqual(m.restitution, 0.5f));
     applyImpulse(a, b, m);
 
-    Vec2 rvBefore = Vec2(10.0f, 0.0f) - Vec2(-10.0f, 0.0f);
+    Vec2 rvBefore = Vec2(20.0f, 0.0f) - Vec2(-20.0f, 0.0f);
     Vec2 rvAfter = a.velocity - b.velocity;
-    CHECK(approxEqual(a.velocity.x, -5.0f, 1e-4f));
-    CHECK(approxEqual(b.velocity.x, 5.0f, 1e-4f));
+    CHECK(approxEqual(a.velocity.x, -10.0f, 1e-4f));
+    CHECK(approxEqual(b.velocity.x, 10.0f, 1e-4f));
     CHECK(approxEqual(rvAfter.length(), 0.5f * rvBefore.length(), 1e-4f));
 
-    std::cout << "  PASS: e=0.5 collision halves relative speed (10 -> 5)\n";
+    std::cout << "  PASS: e=0.5 collision halves relative speed (40 -> 20)\n";
 }
 
 void testIdenticalPositionCirclesNoNaN() {
@@ -321,6 +320,115 @@ void testIdenticalPositionCirclesNoNaN() {
     CHECK(approxEqual(a->velocity.x + b->velocity.x, 0.0f, 0.01f));
 
     std::cout << "  PASS: Identically-positioned circles (epsilon guard, no NaN)\n";
+}
+
+void testPolygonVsPlaneDetectionAndImpulse() {
+    PlaneShape floor(Vec2(0.0f, 1.0f), -220.0f);
+    RigidBody staticPlane(Vec2(0.0f, -230.0f), 0.0f, std::make_unique<PlaneShape>(floor));
+
+    RigidBody resting(Vec2(0.0f, -190.0f), 2.0f, std::make_unique<PolygonShape>(PolygonShape::makeBox(30.0f, 30.0f)), 0.5f);
+    Manifold m;
+    CHECK(!detectPolygonVsPlane(resting, floor, m));
+
+    RigidBody falling(Vec2(0.0f, -200.0f), 2.0f, std::make_unique<PolygonShape>(PolygonShape::makeBox(30.0f, 30.0f)), 0.5f);
+    falling.velocity = Vec2(0.0f, -40.0f);
+    CHECK(detectPolygonVsPlane(falling, floor, m));
+    CHECK(approxEqual(m.normal, Vec2(0.0f, 1.0f)));
+    CHECK(approxEqual(m.penetration, 10.0f));
+
+    applyImpulse(falling, staticPlane, m);
+    CHECK(approxEqual(falling.velocity.y, 20.0f));
+    CHECK(approxEqual(falling.velocity.x, 0.0f));
+
+    RigidBody rotated(Vec2(0.0f, -220.0f - 2.0f + 14.142f), 2.0f, std::make_unique<PolygonShape>(PolygonShape::makeBox(10.0f, 10.0f)), 0.9f);
+    rotated.angle = PI / 4.0f;
+    rotated.velocity = Vec2(0.0f, -40.0f);
+    CHECK(detectPolygonVsPlane(rotated, floor, m));
+    CHECK(approxEqual(m.normal, Vec2(0.0f, 1.0f)));
+    CHECK(approxEqualRel(m.penetration, 2.0f, 1e-3f));
+    applyImpulse(rotated, staticPlane, m);
+    CHECK(approxEqual(rotated.velocity.y, 0.9f * 40.0f, 1e-3f));
+
+    std::cout << "  PASS: Polygon-vs-plane detection + impulse (box, rotated box, separated)\n";
+}
+
+void testPolygonPolygonDetection() {
+    RigidBody a(Vec2(0.0f, 0.0f), 1.0f, std::make_unique<PolygonShape>(PolygonShape::makeBox(20.0f, 20.0f)));
+    RigidBody b(Vec2(30.0f, 0.0f), 1.0f, std::make_unique<PolygonShape>(PolygonShape::makeBox(20.0f, 20.0f)));
+    Manifold m;
+
+    CHECK(detectPolygonPolygon(a, b, m));
+    CHECK(approxEqual(m.normal, Vec2(-1.0f, 0.0f)));
+    CHECK(approxEqual(m.penetration, 10.0f));
+
+    RigidBody separated(Vec2(50.0f, 0.0f), 1.0f, std::make_unique<PolygonShape>(PolygonShape::makeBox(20.0f, 20.0f)));
+    CHECK(!detectPolygonPolygon(a, separated, m));
+
+    RigidBody touching(Vec2(40.0f, 0.0f), 1.0f, std::make_unique<PolygonShape>(PolygonShape::makeBox(20.0f, 20.0f)));
+    Manifold t;
+    CHECK(!detectPolygonPolygon(a, touching, t));
+
+    std::cout << "  PASS: Polygon-polygon SAT (overlap axis, separated, touching)\n";
+}
+
+void testCirclePolygonDetection() {
+    RigidBody box(Vec2(0.0f, 0.0f), 10.0f, std::make_unique<PolygonShape>(PolygonShape::makeBox(20.0f, 20.0f)));
+    Manifold m;
+
+    RigidBody onTop(Vec2(0.0f, 25.0f), 1.0f, std::make_unique<CircleShape>(10.0f));
+    CHECK(detectCirclePolygon(onTop, box, m));
+    CHECK(approxEqual(m.normal, Vec2(0.0f, 1.0f)));
+    CHECK(approxEqual(m.penetration, 5.0f));
+
+    RigidBody inside(Vec2(0.0f, 15.0f), 1.0f, std::make_unique<CircleShape>(10.0f));
+    CHECK(detectCirclePolygon(inside, box, m));
+    CHECK(approxEqual(m.normal, Vec2(0.0f, 1.0f)));
+    CHECK(approxEqual(m.penetration, 5.0f));
+
+    RigidBody beside(Vec2(25.0f, 0.0f), 1.0f, std::make_unique<CircleShape>(10.0f));
+    CHECK(detectCirclePolygon(beside, box, m));
+    CHECK(approxEqual(m.normal, Vec2(1.0f, 0.0f)));
+    CHECK(approxEqual(m.penetration, 5.0f));
+
+    RigidBody away(Vec2(100.0f, 0.0f), 1.0f, std::make_unique<CircleShape>(10.0f));
+    CHECK(!detectCirclePolygon(away, box, m));
+
+    std::cout << "  PASS: Circle-polygon SAT (above, inside, beside, separated)\n";
+}
+
+void testBoxStackStable() {
+    World world(Vec2(0.0f, -980.0f), 1.0f / 120.0f);
+    constexpr float FLOOR_Y = -220.0f;
+    constexpr float HALF = 30.0f;
+    world.addBody(Vec2(0.0f, FLOOR_Y - 10.0f), 0.0f,
+                  std::make_unique<PlaneShape>(Vec2(0.0f, 1.0f), FLOOR_Y, 0.0f));
+
+    constexpr int COUNT = 4;
+    RigidBody* stack[COUNT];
+    for (int i = 0; i < COUNT; ++i) {
+        stack[i] = world.addBody(Vec2(0.0f, FLOOR_Y + HALF + 2.0f * HALF * i), 1.0f,
+                                 std::make_unique<PolygonShape>(PolygonShape::makeBox(HALF, HALF)), 0.0f);
+    }
+    for (int i = 0; i < COUNT; ++i) {
+        stack[i]->position.y = FLOOR_Y + HALF + 2.0f * HALF * i;
+    }
+
+    for (int i = 0; i < 2400; ++i) {
+        world.step();
+    }
+
+    for (int i = 0; i < COUNT; ++i) {
+        float expectedY = FLOOR_Y + HALF + 2.0f * HALF * i;
+        std::cout << "    box" << i << " expectedY=" << expectedY
+                  << " y=" << stack[i]->position.y << " vy=" << stack[i]->velocity.y
+                  << " y-expected=" << (stack[i]->position.y - expectedY) << "\n";
+        CHECK(std::isfinite(stack[i]->position.x) && std::isfinite(stack[i]->position.y));
+        CHECK(std::fabs(stack[i]->position.y - expectedY) < 1.0f);
+        CHECK(std::fabs(stack[i]->position.x) < 0.5f);
+        CHECK(std::fabs(stack[i]->velocity.y) < 10.0f);
+    }
+
+    std::cout << "  PASS: 4-box stack stays stable (M4 done criterion)\n";
 }
 
 void testRestingNoBounce() {
@@ -363,6 +471,10 @@ int main() {
     testMomentumConservedUnequalMass();
     testNonElasticCollisionLosesRelativeSpeed();
     testIdenticalPositionCirclesNoNaN();
+    testPolygonVsPlaneDetectionAndImpulse();
+    testPolygonPolygonDetection();
+    testCirclePolygonDetection();
+    testBoxStackStable();
 
     std::cout << "========================\n";
     std::cout << "All tests passed.\n";
